@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from app.config.settings import get_settings
 from app.context.market_context import fetch_macro_context
 from app.engine.decision_engine import evaluate_signal
+from app.executor.factory import build_executor
 from app.models.schemas import BridgeResponse, TradingViewAlert
 from app.notifier.telegram import TelegramNotifier
 from app.storage.signal_log import SignalLog
@@ -32,6 +33,16 @@ _cooldown_lock = asyncio.Lock()
 
 _signal_log = SignalLog()
 _notifier = TelegramNotifier()
+# Built lazily on first request so tests / offline validators that change
+# env vars after import still see the right settings.
+_executor = None
+
+
+def _get_executor():
+    global _executor
+    if _executor is None:
+        _executor = build_executor()
+    return _executor
 
 
 def _check_cooldown(alert: TradingViewAlert, cooldown_s: int) -> bool:
@@ -115,9 +126,25 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
     notified = False
     if decision.action in {"execute", "reduce"}:
         notified = await _notifier.send(alert, context, decision)
+
+    # ── Broker execution (optional) ────────────────────────────────────
+    execution = await _get_executor().execute(alert, decision)
+    if execution.placed:
+        logger.info(
+            "Executor placed order #{} vol={} {} @ {}",
+            execution.order_id,
+            execution.volume,
+            execution.side,
+            execution.entry_price,
+        )
+    elif execution.error:
+        logger.warning("Executor error: {}", execution.error)
+
     # Log every signal (even skips) for audit
     try:
-        signal_id = await _signal_log.record(alert, context, decision, notified=notified)
+        signal_id = await _signal_log.record(
+            alert, context, decision, notified=notified, execution=execution
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to write signal log: {}", exc)
         signal_id = None
@@ -129,6 +156,7 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
         decision=decision,
         notifier_sent=notified,
         signal_id=signal_id,
+        execution=execution.to_dict(),
     )
 
 
@@ -136,6 +164,7 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
 async def health() -> dict:
     """Liveness + non-sensitive config summary."""
     s = get_settings()
+    ex = _get_executor()
     return {
         "status": "ok",
         "app_env": s.app_env,
@@ -147,4 +176,6 @@ async def health() -> dict:
         "min_confidence": s.min_confidence,
         "cooldown_seconds": s.signal_cooldown_seconds,
         "model": s.minimax_model,
+        "executor": getattr(ex, "name", "unknown"),
+        "mt5_enabled": s.mt5_enabled,
     }

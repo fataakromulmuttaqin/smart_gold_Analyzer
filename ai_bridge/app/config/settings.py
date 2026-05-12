@@ -61,6 +61,23 @@ class Settings(BaseSettings):
     min_confidence: float = Field(default=0.60, alias="MIN_CONFIDENCE")
     signal_cooldown_seconds: int = Field(default=60, alias="SIGNAL_COOLDOWN_SECONDS")
 
+    # ── MT5 broker execution (optional) ──────────────────────────────────
+    # Opt-in: when MT5_ENABLED=false (default) the bridge uses NoopExecutor.
+    # MT5 only works on Windows / Wine; on Linux the import will fail and
+    # we fall back to NoopExecutor automatically.
+    mt5_enabled: bool = Field(default=False, alias="MT5_ENABLED")
+    mt5_login: str = Field(default="", alias="MT5_LOGIN")
+    mt5_password: str = Field(default="", alias="MT5_PASSWORD")
+    mt5_server: str = Field(default="", alias="MT5_SERVER")
+    mt5_symbol: str = Field(default="", alias="MT5_SYMBOL")
+    mt5_risk_pct: float = Field(default=1.0, alias="MT5_RISK_PCT")
+    mt5_fixed_lot: float = Field(default=0.0, alias="MT5_FIXED_LOT")
+    mt5_deviation: int = Field(default=20, alias="MT5_DEVIATION")
+    mt5_magic: int = Field(default=260512, alias="MT5_MAGIC")
+    mt5_fallback_stop_points: int = Field(
+        default=2000, alias="MT5_FALLBACK_STOP_POINTS"
+    )
+
     # ── Validators ───────────────────────────────────────────────────────
     @field_validator("minimax_base_url")
     @classmethod
@@ -87,6 +104,20 @@ class Settings(BaseSettings):
     @property
     def newsapi_is_configured(self) -> bool:
         return bool(self.newsapi_key)
+
+    @property
+    def mt5_is_configured(self) -> bool:
+        """True if MT5 is enabled and the essential credentials are present.
+
+        Note: even when this returns True, the MetaTrader5 package may fail
+        to import on Linux — the factory handles that gracefully.
+        """
+        return (
+            self.mt5_enabled
+            and bool(self.mt5_login)
+            and bool(self.mt5_password)
+            and bool(self.mt5_server)
+        )
 
 
 @lru_cache(maxsize=1)

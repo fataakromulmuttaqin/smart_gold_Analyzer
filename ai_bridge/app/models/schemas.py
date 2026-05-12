@@ -96,3 +96,4 @@ class BridgeResponse(BaseModel):
     decision: LLMDecision
     notifier_sent: bool = False
     signal_id: int | None = None
+    execution: dict | None = None

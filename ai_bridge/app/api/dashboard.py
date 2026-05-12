@@ -7,7 +7,10 @@ public access gated.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Literal
+
+from fastapi import APIRouter, Body, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
 from app.storage.signal_log import SignalLog
 
@@ -59,3 +62,51 @@ async def get_signal(signal_id: int) -> dict:
             detail=f"Signal id={signal_id} not found",
         )
     return data
+
+
+@router.get("/winrate")
+async def winrate(
+    hours: int = Query(
+        24 * 30,
+        ge=1,
+        le=24 * 365,
+        description="Lookback window (default: 30 days)",
+    ),
+) -> dict:
+    """Win / loss breakdown per Pine-signal name.
+
+    Only counts signals whose ``outcome`` has been filled in via
+    ``PATCH /api/signals/{id}/outcome``. Until then, the response contains
+    empty lists and the dashboard shows a hint.
+    """
+    return await _signal_log.winrate_by_signal(since_hours=hours)
+
+
+class OutcomeUpdate(BaseModel):
+    outcome: Literal["win", "loss", "breakeven"]
+    pnl: float | None = Field(
+        default=None,
+        description="Account-currency PnL (positive=profit). Optional.",
+    )
+
+
+@router.patch("/signals/{signal_id}/outcome")
+async def update_outcome(
+    signal_id: int,
+    body: OutcomeUpdate = Body(...),
+) -> dict:
+    """Record the real trade outcome for a signal (call after trade closes)."""
+    try:
+        ok = await _signal_log.update_outcome(
+            signal_id, outcome=body.outcome, pnl=body.pnl
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Signal id={signal_id} not found",
+        )
+    return {"updated": True, "id": signal_id, "outcome": body.outcome, "pnl": body.pnl}
