@@ -54,7 +54,9 @@ def _stub_loguru() -> None:
 def _stub_pydantic() -> None:
     pyd = types.ModuleType("pydantic")
 
-    def Field(default=None, alias=None, **kw):
+    def Field(default=None, alias=None, default_factory=None, ge=None, le=None, **kw):
+        if default_factory is not None:
+            return default_factory()
         return default
 
     def field_validator(*a, **kw):
@@ -62,8 +64,33 @@ def _stub_pydantic() -> None:
             return fn
         return deco
 
+    def ConfigDict(**kw):
+        return kw
+
+    class BaseModel:
+        def __init__(self, **data):
+            for k, v in type(self).__dict__.items():
+                if k.startswith("_") or callable(v) or isinstance(v, (classmethod, staticmethod, property)):
+                    continue
+                setattr(self, k, data.get(k, v))
+            # also pick up annotations defaults supplied in subclass
+            for k in getattr(type(self), "__annotations__", {}):
+                if k in data:
+                    setattr(self, k, data[k])
+                elif not hasattr(self, k):
+                    setattr(self, k, None)
+
+        def model_dump(self):
+            return {
+                k: v
+                for k, v in self.__dict__.items()
+                if not k.startswith("_")
+            }
+
     pyd.Field = Field  # type: ignore[attr-defined]
     pyd.field_validator = field_validator  # type: ignore[attr-defined]
+    pyd.ConfigDict = ConfigDict  # type: ignore[attr-defined]
+    pyd.BaseModel = BaseModel  # type: ignore[attr-defined]
     sys.modules["pydantic"] = pyd
 
     pys = types.ModuleType("pydantic_settings")
@@ -148,6 +175,26 @@ def main() -> int:
         print(f"[ok]   mock chat() returns canned decision: {data}")
 
     asyncio.run(run())
+
+    # ── Macro context fallback (no yfinance, no NewsAPI key) ───────────
+    # yfinance import should fail gracefully; NewsAPI key is empty → []
+    os.environ["ENABLE_MACRO_CONTEXT"] = "true"
+    os.environ["NEWSAPI_KEY"] = ""
+
+    from app.context.market_context import fetch_macro_context  # noqa: E402
+
+    async def run_ctx() -> None:
+        # fresh settings to reflect env
+        s2 = settings_mod.Settings()
+        ctx = await fetch_macro_context(settings=s2)
+        assert ctx.partial is True, "expected partial=True when DXY unavailable"
+        assert ctx.dxy_price is None
+        assert ctx.us10y_yield is None
+        assert ctx.news_headlines == []
+        print(f"[ok]   macro context gracefully degrades: partial={ctx.partial} notes={ctx.notes}")
+
+    asyncio.run(run_ctx())
+
     print("\nALL OFFLINE VALIDATIONS PASSED")
     return 0
 
