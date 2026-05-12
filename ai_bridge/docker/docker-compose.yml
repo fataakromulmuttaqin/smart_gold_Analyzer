@@ -1,0 +1,25 @@
+# docker compose -f docker/docker-compose.yml up -d --build
+#
+# Expects ai_bridge/.env next to requirements.txt. The bridge listens on
+# 127.0.0.1:8080 — terminate HTTPS with Caddy / Nginx in front (see
+# DEPLOYMENT.md). NEVER expose :8080 publicly without TLS + a real domain.
+services:
+  ai_bridge:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: smartgold-ai-bridge:latest
+    container_name: smartgold-ai-bridge
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    ports:
+      # Bind to loopback only. Reverse proxy (Caddy/Nginx) handles public port 443.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ../data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

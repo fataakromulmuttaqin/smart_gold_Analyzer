@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>SmartGold AI Bridge — Dashboard</title>
+  <link rel="stylesheet" href="/ui/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot" id="health-dot" title="connecting…"></span>
+      <h1>SmartGold <span class="muted">AI Bridge</span></h1>
+    </div>
+    <div class="header-meta" id="health-meta">…</div>
+  </header>
+
+  <main>
+    <!-- ═══ Summary row ═══ -->
+    <section class="stats-row" id="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Total signals</div>
+        <div class="stat-value" id="stat-total">–</div>
+        <div class="stat-sub" id="stat-window">last 24h</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Execute</div>
+        <div class="stat-value ok" id="stat-execute">–</div>
+        <div class="stat-sub">high-confidence trades</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Reduce</div>
+        <div class="stat-value warn" id="stat-reduce">–</div>
+        <div class="stat-sub">scale-down signals</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Skip</div>
+        <div class="stat-value muted" id="stat-skip">–</div>
+        <div class="stat-sub">policy/LLM filtered</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg confidence</div>
+        <div class="stat-value" id="stat-conf">–</div>
+        <div class="stat-sub"><span id="stat-notified">0</span> notified</div>
+      </div>
+    </section>
+
+    <!-- ═══ Filters + table ═══ -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Signals</h2>
+        <div class="filters">
+          <label>Window
+            <select id="f-hours">
+              <option value="24">24 h</option>
+              <option value="72">3 d</option>
+              <option value="168" selected>7 d</option>
+              <option value="720">30 d</option>
+            </select>
+          </label>
+          <label>Action
+            <select id="f-action">
+              <option value="">all</option>
+              <option value="execute">execute</option>
+              <option value="reduce">reduce</option>
+              <option value="skip">skip</option>
+            </select>
+          </label>
+          <label>Symbol
+            <input id="f-symbol" placeholder="e.g. XAUUSD" />
+          </label>
+          <button id="btn-refresh" type="button">Refresh</button>
+          <span class="hint" id="refresh-hint">auto-refreshing every 30 s</span>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="signals-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Received (UTC)</th>
+              <th>Symbol</th>
+              <th>TF</th>
+              <th>Signal</th>
+              <th>Price</th>
+              <th>Decision</th>
+              <th>Conf.</th>
+              <th>Notified</th>
+            </tr>
+          </thead>
+          <tbody id="signals-body">
+            <tr><td colspan="9" class="empty">loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══ Detail modal ═══ -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-inner" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+      <h3 id="modal-title">Signal detail</h3>
+      <div id="modal-body">…</div>
+    </div>
+  </div>
+
+  <footer>
+    <a href="https://github.com/fataakromulmuttaqin/smart_gold_Analyzer" target="_blank" rel="noopener noreferrer">SmartGold Analyzer</a>
+    · <a href="/docs">OpenAPI docs</a>
+    · <a href="/health">Raw health</a>
+  </footer>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
