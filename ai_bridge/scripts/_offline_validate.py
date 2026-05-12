@@ -241,6 +241,55 @@ def main() -> int:
 
     asyncio.run(run_engine())
 
+    # ── Telegram formatter (no network, just format) ────────────────────
+    from app.notifier.telegram import _format_message  # noqa: E402
+    from app.models.schemas import LLMDecision as _LLMDecision  # noqa: E402
+
+    a = TradingViewAlert(
+        secret="x", symbol="OANDA:XAUUSD", timeframe="60",
+        signal="strong_long", price=2345.67,
+    )
+    c = MacroContext(
+        dxy_price=104.2, dxy_change_pct=-0.15,
+        us10y_yield=4.12, us10y_change_bp=-3.0,
+        news_headlines=["[Reuters] Gold steady as dollar slips"],
+    )
+    d = _LLMDecision(
+        action="execute", confidence=0.78,
+        reasoning="Bullish structure with weakening DXY and softer yields.",
+        risk_notes="Wait for retest of OB.",
+        suggested_rr=2.0, suggested_stop_atr_mult=1.5,
+    )
+    msg = _format_message(a, c, d)
+    assert "EXECUTE" in msg and "104.2" in msg and "0.78" in msg
+    assert "1:2" in msg and "1.5×ATR" in msg
+    print("[ok]   telegram message formatter contains all fields")
+
+    # ── SQLite SignalLog round-trip ─────────────────────────────────────
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    os.environ["SQLITE_PATH"] = tmp.name
+
+    async def run_storage() -> None:
+        s4 = settings_mod.Settings()
+        from app.storage.signal_log import SignalLog
+        sl = SignalLog(settings=s4)
+        sid = await sl.record(a, c, d, notified=True)
+        assert isinstance(sid, int) and sid >= 1
+        # Verify row exists
+        import sqlite3
+        with sqlite3.connect(tmp.name) as conn:
+            row = conn.execute(
+                "SELECT symbol, signal, decision_action, notified FROM signals WHERE id=?",
+                (sid,),
+            ).fetchone()
+        assert row == ("OANDA:XAUUSD", "strong_long", "execute", 1), row
+        print(f"[ok]   SignalLog round-trip works: id={sid}")
+
+    asyncio.run(run_storage())
+    os.unlink(tmp.name)
+
     print("\nALL OFFLINE VALIDATIONS PASSED")
     return 0
 
