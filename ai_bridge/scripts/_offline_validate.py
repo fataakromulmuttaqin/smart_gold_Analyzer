@@ -290,6 +290,69 @@ def main() -> int:
     asyncio.run(run_storage())
     os.unlink(tmp.name)
 
+    # ── Dashboard read-side (list / stats / get_by_id) ──────────────────
+    tmp2 = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp2.close()
+    os.environ["SQLITE_PATH"] = tmp2.name
+
+    async def run_dashboard() -> None:
+        s5 = settings_mod.Settings()
+        from app.storage.signal_log import SignalLog
+
+        sl = SignalLog(settings=s5)
+        # Insert 3 signals with varied actions so the stats aggregation has
+        # something interesting to reduce over.
+        variants = [
+            ("execute", 0.82, True),
+            ("skip",    0.42, False),
+            ("reduce",  0.66, True),
+        ]
+        for action, conf, notified in variants:
+            decision = _LLMDecision(
+                action=action, confidence=conf,
+                reasoning=f"{action} reasoning",
+                risk_notes="n/a",
+            )
+            await sl.record(a, c, decision, notified=notified)
+
+        # list_recent returns newest-first, clamped to 500
+        recent = await sl.list_recent(limit=10)
+        assert len(recent) == 3
+        assert recent[0]["id"] > recent[-1]["id"]
+        # Filter by action
+        execs = await sl.list_recent(action="execute")
+        assert len(execs) == 1 and execs[0]["decision_action"] == "execute"
+        # Filter by symbol that doesn't exist
+        none_rows = await sl.list_recent(symbol="EURUSD")
+        assert none_rows == []
+        print(f"[ok]   dashboard list/filter: {len(recent)} rows, exec filter={len(execs)}")
+
+        # Stats
+        stats = await sl.stats(since_hours=24)
+        assert stats["total"] == 3
+        assert stats["by_action"]["execute"] == 1
+        assert stats["by_action"]["skip"] == 1
+        assert stats["by_action"]["reduce"] == 1
+        assert stats["notified"] == 2  # execute + reduce
+        assert stats["avg_confidence"] is not None
+        assert 0.4 < stats["avg_confidence"] < 0.8
+        print(f"[ok]   dashboard stats aggregation: {stats}")
+
+        # Detail
+        detail = await sl.get_by_id(recent[0]["id"])
+        assert detail is not None
+        assert "alert" in detail and "context" in detail and "decision" in detail
+        assert isinstance(detail["alert"], dict)
+        print(f"[ok]   dashboard get_by_id expands JSON columns: keys={sorted(detail['alert'].keys())[:3]}…")
+
+        # Not-found path
+        missing = await sl.get_by_id(999999)
+        assert missing is None
+        print("[ok]   dashboard get_by_id returns None for missing id")
+
+    asyncio.run(run_dashboard())
+    os.unlink(tmp2.name)
+
     # ── Webhook payload round-trip (Pine Script JSON → TradingViewAlert) ─
     # This is the exact payload documented in pinescript/ALERT_PAYLOAD.md
     sample_payload = {

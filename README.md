@@ -10,6 +10,7 @@ they reach your Telegram / broker.
 TradingView (Pine v6)  ──▶  Your VPS (FastAPI)  ──▶  MiniMax LLM
                                      │
                                      ├──▶  Telegram (decision)
+                                     ├──▶  Web Dashboard (/ui)
                                      └──▶  SQLite (audit log)
 ```
 
@@ -58,6 +59,9 @@ signals), it:
    LLM responses also collapse to `skip`.
 4. **Notifies Telegram** only when action is `execute` or `reduce`.
 5. **Writes an audit row** to SQLite for every signal, even skipped ones.
+6. **Renders a dashboard** at `https://YOUR_DOMAIN/ui/` with rolling
+   stats, a filterable signal table, and a per-signal detail view
+   showing the LLM's reasoning and the macro snapshot it used.
 
 Mock mode (`LLM_MOCK_MODE=true`) bypasses the real LLM so you can test
 plumbing end-to-end without spending tokens.

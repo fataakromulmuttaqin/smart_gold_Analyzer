@@ -6,13 +6,24 @@
 sga.example.com {
     encode zstd gzip
 
-    # Only forward the webhook + health endpoint. Block everything else.
-    @allowed path /webhook/tradingview /health /
+    # Forward webhook, health, root, dashboard UI, and dashboard API.
+    # Anything else returns 404 to reduce attack surface.
+    @allowed path /webhook/tradingview /health / /ui /ui/* /api/*
     handle @allowed {
         reverse_proxy 127.0.0.1:8080 {
             header_up X-Real-IP {remote_host}
         }
     }
+
+    # OPTIONAL: protect the dashboard with HTTP Basic Auth.
+    # Generate the hashed password on the VPS:
+    #   caddy hash-password
+    # then replace `REPLACE_ME_WITH_HASH` below and move the @allowed
+    # matcher for /ui and /api above this block so those routes hit auth.
+    # @dashboard path /ui /ui/* /api/*
+    # basic_auth @dashboard {
+    #     admin REPLACE_ME_WITH_HASH
+    # }
 
     # Explicitly 404 other paths (e.g. /docs) if you don't want them public.
     handle {

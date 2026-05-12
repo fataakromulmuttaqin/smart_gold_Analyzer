@@ -151,6 +151,11 @@ python3 scripts/smoke_test.py --url https://YOUR_DOMAIN
 
 Expected output ends with `[SMOKE TEST PASSED]`.
 
+Then open **`https://YOUR_DOMAIN/`** (or `/ui/`) in your browser — the
+dashboard should load with the summary cards, filters, and signals table
+(empty until TradingView starts firing alerts). It auto-refreshes every
+30 seconds.
+
 If Telegram is configured, you should also receive a message in your bot
 (only when decision is `execute` or `reduce`; mock mode returns `skip`
 so nothing is sent by default — set `LLM_MOCK_MODE=false` and provide a
@@ -178,6 +183,27 @@ exact JSON schema TradingView sends.
 ---
 
 ## 9. Day-2 operations
+
+### Dashboard
+
+Visit `https://YOUR_DOMAIN/` — you'll see the SmartGold dashboard with:
+- Summary cards (total, execute/reduce/skip counts, avg confidence, notified)
+- A filterable, paginated signals table (action, symbol, time window)
+- Click any row for the full detail (LLM reasoning, macro snapshot, raw payload)
+
+The dashboard auto-polls the API every 30 s; it's powered by three
+read-only endpoints you can also script against:
+
+```
+GET /api/stats?hours=24
+GET /api/signals?limit=50&action=execute&symbol=XAUUSD
+GET /api/signals/{id}
+```
+
+> ⚠️ The dashboard is **unauthenticated** by default. If your VPS is
+> public, protect it with Caddy basic auth — the stanza is commented in
+> `docker/Caddyfile`. Generate a hash with `caddy hash-password` and
+> uncomment the `@dashboard` + `basic_auth` block.
 
 ### Logs
 
