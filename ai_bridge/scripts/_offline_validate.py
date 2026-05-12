@@ -290,6 +290,33 @@ def main() -> int:
     asyncio.run(run_storage())
     os.unlink(tmp.name)
 
+    # ── Webhook payload round-trip (Pine Script JSON → TradingViewAlert) ─
+    # This is the exact payload documented in pinescript/ALERT_PAYLOAD.md
+    sample_payload = {
+        "secret": "abc123xyz",
+        "symbol": "XAUUSD",
+        "timeframe": "60",
+        "signal": "strong_long",
+        "price": 2345.67,
+        "time": "2026-05-12T18:00:00Z",
+        "ms_state": "bullish",
+        "rsi": 52.34,
+        "atr": 3.21,
+        "money_flow": 67.5,
+        "ema_fast": 2340.5,
+        "ema_slow": 2332.1,
+        "ema_base": 2290.7,
+    }
+    # With our pydantic stub, just construct & verify field access.
+    parsed = TradingViewAlert(**sample_payload)
+    assert parsed.secret == "abc123xyz"
+    assert parsed.symbol == "XAUUSD"
+    assert parsed.signal == "strong_long"
+    assert parsed.price == 2345.67
+    assert parsed.ms_state == "bullish"
+    assert parsed.rsi == 52.34
+    print("[ok]   Pine Script sample payload matches TradingViewAlert schema")
+
     print("\nALL OFFLINE VALIDATIONS PASSED")
     return 0
 
