@@ -1,0 +1,46 @@
+# systemd unit file for running the AI bridge without docker-compose.
+# Install:
+#   sudo cp docker/smartgold-ai-bridge.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now smartgold-ai-bridge
+# Logs:
+#   journalctl -u smartgold-ai-bridge -f
+#
+# Requires: a system-wide venv at /opt/smartgold/venv with requirements.txt
+# installed, and the repo checked out at /opt/smartgold/smart_gold_Analyzer.
+
+[Unit]
+Description=SmartGold AI Bridge (FastAPI + MiniMax LLM)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smartgold
+Group=smartgold
+WorkingDirectory=/opt/smartgold/smart_gold_Analyzer/ai_bridge
+EnvironmentFile=/opt/smartgold/smart_gold_Analyzer/ai_bridge/.env
+ExecStart=/opt/smartgold/venv/bin/uvicorn app.main:app \
+          --host 127.0.0.1 --port 8080 --workers 2 --access-log
+Restart=always
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/smartgold/smart_gold_Analyzer/ai_bridge/data
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Resource limits (tune for your VPS)
+MemoryHigh=512M
+MemoryMax=768M
+TasksMax=200
+
+[Install]
+WantedBy=multi-user.target
