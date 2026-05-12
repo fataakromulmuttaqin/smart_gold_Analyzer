@@ -58,7 +58,7 @@ def main() -> int:
     assert exit_price == take
     pnl_r = (exit_price - entry) / stop_distance
     assert abs(pnl_r - 2.0) < 1e-9, pnl_r
-    print(f"[ok]   long TP scenario: exit_idx=3 reason=tp pnl_r=2.0")
+    print("[ok]   long TP scenario: exit_idx=3 reason=tp pnl_r=2.0")
 
     # Scenario B: long that hits SL first
     bars_b = [
@@ -72,7 +72,7 @@ def main() -> int:
     assert exit_price == stop
     pnl_r = (exit_price - entry) / stop_distance
     assert abs(pnl_r - (-1.0)) < 1e-9
-    print(f"[ok]   long SL scenario: exit_idx=1 reason=sl pnl_r=-1.0")
+    print("[ok]   long SL scenario: exit_idx=1 reason=sl pnl_r=-1.0")
 
     # Scenario C: timeout — price drifts but neither barrier hit
     bars_c = [
@@ -100,7 +100,7 @@ def main() -> int:
     assert exit_price == take_s
     pnl_r_s = (entry_s - exit_price) / 5.0  # stop_distance=5
     assert abs(pnl_r_s - 2.0) < 1e-9
-    print(f"[ok]   short TP scenario: exit_idx=2 reason=tp pnl_r=2.0")
+    print("[ok]   short TP scenario: exit_idx=2 reason=tp pnl_r=2.0")
 
     print("\nALL OFFLINE BACKTEST CHECKS PASSED")
     return 0

@@ -18,4 +18,15 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
-ignore = ["E501"]
+ignore = [
+    "E501",    # line too long (handled loosely; we already set line-length=100)
+    "SIM105",  # try/except/pass — used for best-effort schema migration
+    "SIM108",  # ternary style — readability sometimes prefers if/else
+    "SIM115",  # tempfile context manager — we intentionally manage lifetime
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and offline validators are allowed to be looser about imports and
+# temp-file handling.
+"tests/*" = ["B008", "E402"]
+"scripts/_offline_*.py" = ["E402"]

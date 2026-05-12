@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field
 
 from app.storage.signal_log import SignalLog
 
-
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
 # Single shared instance — mirrors the pattern used in webhook.py so the
@@ -93,7 +92,7 @@ class OutcomeUpdate(BaseModel):
 @router.patch("/signals/{signal_id}/outcome")
 async def update_outcome(
     signal_id: int,
-    body: OutcomeUpdate = Body(...),
+    body: OutcomeUpdate = Body(...),  # noqa: B008 — FastAPI dependency-injection idiom
 ) -> dict:
     """Record the real trade outcome for a signal (call after trade closes)."""
     try:

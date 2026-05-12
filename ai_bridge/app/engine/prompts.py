@@ -10,7 +10,6 @@ import json
 
 from app.models.schemas import MacroContext, TradingViewAlert
 
-
 SYSTEM_PROMPT = """\
 You are SmartGold-Reviewer, a disciplined gold (XAU/USD) trading analyst.
 

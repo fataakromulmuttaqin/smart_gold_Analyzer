@@ -19,7 +19,6 @@ from app.llm.minimax_client import (
 from app.models.schemas import LLMDecision, MacroContext, TradingViewAlert
 from app.utils.logging import logger
 
-
 VALID_ACTIONS = {"execute", "skip", "reduce"}
 
 

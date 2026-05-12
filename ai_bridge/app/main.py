@@ -15,10 +15,10 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.dashboard import router as dashboard_router
-from app.api.webhook import _signal_log, router as webhook_router
+from app.api.webhook import _signal_log
+from app.api.webhook import router as webhook_router
 from app.config.settings import get_settings
 from app.utils.logging import configure_logging, logger
-
 
 _UI_DIR = Path(__file__).resolve().parent / "ui"
 

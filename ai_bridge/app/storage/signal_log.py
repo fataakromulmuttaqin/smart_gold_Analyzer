@@ -20,7 +20,6 @@ from app.config.settings import Settings, get_settings
 from app.models.schemas import LLMDecision, MacroContext, TradingViewAlert
 from app.utils.logging import logger
 
-
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS signals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -24,7 +24,6 @@ from app.notifier.telegram import TelegramNotifier
 from app.storage.signal_log import SignalLog
 from app.utils.logging import logger
 
-
 router = APIRouter()
 
 # In-memory cooldown tracker: {(symbol, signal): last_unix_ts}
@@ -66,11 +65,11 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
     # Accept both JSON and form-encoded bodies (TradingView wraps in JSON).
     try:
         body = await request.json()
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Body must be valid JSON",
-        )
+        ) from exc
 
     try:
         alert = TradingViewAlert.model_validate(body)
@@ -79,7 +78,7 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Payload validation failed: {exc}",
-        )
+        ) from exc
 
     # ── Auth: shared secret ─────────────────────────────────────────────
     if not settings.webhook_secret:

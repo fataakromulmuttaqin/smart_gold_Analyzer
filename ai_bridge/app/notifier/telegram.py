@@ -12,7 +12,6 @@ from app.config.settings import Settings, get_settings
 from app.models.schemas import LLMDecision, MacroContext, TradingViewAlert
 from app.utils.logging import logger
 
-
 # Action → emoji for at-a-glance Telegram UX
 _ACTION_EMOJI = {
     "execute": "✅",

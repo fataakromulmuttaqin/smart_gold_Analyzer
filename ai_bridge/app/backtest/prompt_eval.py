@@ -17,8 +17,8 @@ baseline ("what if we skipped everything?").
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import pandas as pd
 
@@ -48,7 +48,8 @@ class PromptVariant:
         # alone — the backtest is not re-fetching live DXY/yields for
         # historical bars (we don't have them). Users can plug in a richer
         # context by supplying a custom ``accept`` callable.
-        system_prompt = self.system_prompt
+        # Note: self.system_prompt is reserved for a future variant that
+        # overrides the engine's SYSTEM_PROMPT; unused for now.
         min_conf = (
             self.min_confidence
             if self.min_confidence is not None
@@ -148,9 +149,11 @@ def run_backtest(
         accepted = 0
         rejected = 0
 
-        def _counting_accept(row: SignalRow) -> tuple[bool, dict]:
+        def _counting_accept(
+            row: SignalRow, _accept_fn=accept_fn
+        ) -> tuple[bool, dict]:
             nonlocal accepted, rejected
-            ok, meta = accept_fn(row)
+            ok, meta = _accept_fn(row)
             if ok:
                 accepted += 1
             else:

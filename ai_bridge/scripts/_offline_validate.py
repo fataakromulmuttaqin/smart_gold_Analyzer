@@ -242,8 +242,8 @@ def main() -> int:
     asyncio.run(run_engine())
 
     # ── Telegram formatter (no network, just format) ────────────────────
-    from app.notifier.telegram import _format_message  # noqa: E402
     from app.models.schemas import LLMDecision as _LLMDecision  # noqa: E402
+    from app.notifier.telegram import _format_message  # noqa: E402
 
     a = TradingViewAlert(
         secret="x", symbol="OANDA:XAUUSD", timeframe="60",
@@ -381,7 +381,7 @@ def main() -> int:
     print("[ok]   Pine Script sample payload matches TradingViewAlert schema")
 
     # ── Executor (noop + factory fallback when MT5 absent) ──────────────
-    from app.executor.base import NoopExecutor, ExecutionResult  # noqa: E402
+    from app.executor.base import ExecutionResult, NoopExecutor  # noqa: E402
     from app.executor.factory import build_executor  # noqa: E402
 
     async def run_executor() -> None:
