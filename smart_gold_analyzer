@@ -29,7 +29,8 @@ ms_show      = input.bool(true,  "Show Market Structure",        group=grpMS)
 ms_swing_len = input.int(10,     "Swing Lookback",  minval=5, maxval=50, group=grpMS)
 ms_show_bos  = input.bool(true,  "Show BOS (Break of Structure)", group=grpMS)
 ms_show_choch= input.bool(true,  "Show CHoCH (Change of Character)", group=grpMS)
-ms_show_swing= input.bool(true,  "Show Swing High/Low Labels",   group=grpMS)
+ms_show_swing= input.bool(false, "Show Swing High/Low Labels",   group=grpMS)
+barcolor_show= input.bool(false, "Color Candles by Structure",    group=grpMS)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ INPUTS — ORDER BLOCKS
@@ -64,6 +65,7 @@ liq_grab_show= input.bool(true,  "Show Liquidity Grabs",         group=grpLiq)
 trend_ema_fast = input.int(21,   "Fast EMA",  minval=5,  maxval=50,  group=grpTrend)
 trend_ema_slow = input.int(50,   "Slow EMA",  minval=20, maxval=200, group=grpTrend)
 trend_ema_base = input.int(200,  "Base EMA",  minval=50, maxval=500, group=grpTrend)
+ema_show       = input.bool(false, "Show EMA Lines",               group=grpTrend)
 atr_len        = input.int(14,   "ATR Length", minval=5, maxval=50,  group=grpTrend)
 rsi_len        = input.int(14,   "RSI Length", minval=5, maxval=50,  group=grpTrend)
 
@@ -76,7 +78,7 @@ pd_ote_show  = input.bool(true,  "Highlight OTE Zone (62%-79%)", group=grpPD)
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ INPUTS — ICT KILLZONES
 // ══════════════════════════════════════════════════════════════════════════════
-kz_show      = input.bool(true,  "Show Killzone Sessions",       group=grpKZ)
+kz_show      = input.bool(false, "Show Killzone Sessions",       group=grpKZ)
 kz_asia      = input.bool(true,  "Asia (20:00-00:00 UTC)",       group=grpKZ)
 kz_london    = input.bool(true,  "London (07:00-10:00 UTC)",     group=grpKZ)
 kz_ny        = input.bool(true,  "New York (12:00-15:00 UTC)",   group=grpKZ)
@@ -102,14 +104,15 @@ tp_atr_mult  = input.float(1.5,  "SL ATR Multiplier", minval=0.5, maxval=3.0, st
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ INPUTS — PREVIOUS DAY/WEEK LEVELS
 // ══════════════════════════════════════════════════════════════════════════════
-pdhl_show    = input.bool(true,  "Show Previous Day H/L",        group=grpPDHL)
-pwhl_show    = input.bool(true,  "Show Previous Week H/L",       group=grpPDHL)
+pdhl_show    = input.bool(false, "Show Previous Day H/L",        group=grpPDHL)
+pwhl_show    = input.bool(false, "Show Previous Week H/L",       group=grpPDHL)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ INPUTS — DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
 dash_show    = input.bool(true,  "Show Dashboard",               group=grpDash)
 dash_pos     = input.string("Top Right", "Position", options=["Top Right","Top Left","Bottom Right","Bottom Left"], group=grpDash)
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ COLORS & CONSTANTS
@@ -188,7 +191,6 @@ if not na(swing_lo)
     last_sl_bar:= bar_index - ms_swing_len
 
 
-
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ PREMIUM / DISCOUNT ZONE & OTE (Optimal Trade Entry)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -203,29 +205,8 @@ in_discount  = close < pd_mid
 in_ote_long  = close >= pd_ote_lower and close <= pd_ote_upper and in_discount == false
 in_ote_short = close >= pd_ote_lower and close <= pd_ote_upper and in_premium
 
-// Draw Premium/Discount zones
-var line pd_mid_line = na
-var box  pd_prem_box = na
-var box  pd_disc_box = na
-var box  pd_ote_box  = na
-
-if pd_show and not na(last_sh) and not na(last_sl) and barstate.islast
-    if not na(pd_mid_line)
-        line.delete(pd_mid_line)
-    if not na(pd_prem_box)
-        box.delete(pd_prem_box)
-    if not na(pd_disc_box)
-        box.delete(pd_disc_box)
-    if not na(pd_ote_box)
-        box.delete(pd_ote_box)
-    
-    int pd_start = math.max(last_sh_bar, last_sl_bar)
-    pd_mid_line := line.new(pd_start, pd_mid, bar_index + 10, pd_mid, color=C_NEUTRAL, style=line.style_dotted, width=1)
-    pd_prem_box := box.new(pd_start, pd_range_hi, bar_index + 10, pd_mid, bgcolor=color.new(C_PREMIUM, 92), border_color=color.new(C_PREMIUM, 70), border_width=1)
-    pd_disc_box := box.new(pd_start, pd_mid, bar_index + 10, pd_range_lo, bgcolor=color.new(C_DISCOUNT, 92), border_color=color.new(C_DISCOUNT, 70), border_width=1)
-    
-    if pd_ote_show
-        pd_ote_box := box.new(pd_start, pd_ote_upper, bar_index + 10, pd_ote_lower, bgcolor=color.new(C_OTE, 88), border_color=color.new(C_OTE, 60), border_width=1)
+// Premium/Discount zones — calculations kept, visual display removed by default
+// (Remove boxes from chart to reduce clutter)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ MARKET STRUCTURE — BOS & CHoCH DETECTION
@@ -283,7 +264,7 @@ if bear_bos and (ms_bar_ok or ms_lvl_ok_lo)
 if ms_state == "neutral" and not na(last_sh) and not na(last_sl)
     ms_state := last_sh > last_sl ? "bullish" : "bearish"
 
-// Swing labels with anti-overlap
+// Swing labels — only shown if user enables ms_show_swing (default off)
 var int last_hh_bar = 0
 var int last_ll_bar = 0
 if ms_show and ms_show_swing
@@ -294,20 +275,16 @@ if ms_show and ms_show_swing
         label.new(bar_index - ms_swing_len, swing_lo, "LL", color=color.new(C_BULL,60), textcolor=C_WHITE, style=label.style_label_up, size=size.tiny)
         last_ll_bar := bar_index
 
+
 // ══════════════════════════════════════════════════════════════════════════════
-// ▶ SWING FAILURE PATTERN (SFP)
+// ▶ SWING FAILURE PATTERN (SFP) — Logic kept, labels removed from display
 // ══════════════════════════════════════════════════════════════════════════════
 // SFP Bull: price wicks above previous swing high but closes below it
 // SFP Bear: price wicks below previous swing low but closes above it
 sfp_bull = sfp_show and not na(prev_sh) and high > prev_sh and close < prev_sh and close > open
 sfp_bear = sfp_show and not na(prev_sl) and low < prev_sl and close > prev_sl and close < open
 
-if sfp_bull
-    label.new(bar_index, high, "SFP", color=color.new(C_BEAR, 10), textcolor=C_WHITE, style=label.style_label_down, size=size.small)
-if sfp_bear
-    label.new(bar_index, low, "SFP", color=color.new(C_BULL, 10), textcolor=C_WHITE, style=label.style_label_up, size=size.small)
-
-
+// SFP labels removed from chart to reduce clutter (logic still feeds confluence/alerts)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ ORDER BLOCKS
@@ -373,6 +350,7 @@ if ob_show_brk and array.size(brk_ob_boxes) > 0
         if not na(b)
             box.set_right(b, bar_index + 5)
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ FAIR VALUE GAPS (FVG)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -415,7 +393,7 @@ if fvg_show and array.size(bear_fvg_boxes) > 0
                 break
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ▶ LIQUIDITY — EQUAL HIGHS/LOWS & GRABS
+// ▶ LIQUIDITY — EQUAL HIGHS/LOWS & GRABS (logic kept, visuals removed)
 // ══════════════════════════════════════════════════════════════════════════════
 liq_ph = ta.pivothigh(high, liq_len, liq_len)
 liq_pl = ta.pivotlow(low, liq_len, liq_len)
@@ -423,21 +401,9 @@ var float prev_liq_ph = na
 var float prev_liq_pl = na
 
 if not na(liq_ph)
-    if not na(prev_liq_ph) and liq_eq_show
-        thr_hi = prev_liq_ph * liq_eq_thr / 100
-        if math.abs(liq_ph - prev_liq_ph) < thr_hi
-            eq_lvl = (liq_ph + prev_liq_ph) / 2
-            line.new(bar_index - liq_len * 2, eq_lvl, bar_index + 10, eq_lvl, color=color.new(C_BEAR, 30), style=line.style_dotted, width=2)
-            label.new(bar_index - liq_len, eq_lvl, "EQH", color=color.new(C_BEAR, 50), textcolor=C_WHITE, style=label.style_label_down, size=size.tiny)
     prev_liq_ph := liq_ph
 
 if not na(liq_pl)
-    if not na(prev_liq_pl) and liq_eq_show
-        thr_lo = prev_liq_pl * liq_eq_thr / 100
-        if math.abs(liq_pl - prev_liq_pl) < thr_lo
-            eq_lvl = (liq_pl + prev_liq_pl) / 2
-            line.new(bar_index - liq_len * 2, eq_lvl, bar_index + 10, eq_lvl, color=color.new(C_BULL, 30), style=line.style_dotted, width=2)
-            label.new(bar_index - liq_len, eq_lvl, "EQL", color=color.new(C_BULL, 50), textcolor=C_WHITE, style=label.style_label_up, size=size.tiny)
     prev_liq_pl := liq_pl
 
 recent_lo = ta.lowest(low, liq_len)
@@ -445,25 +411,24 @@ recent_hi = ta.highest(high, liq_len)
 bull_grab = liq_grab_show and low < recent_lo[1] and close > low and (close - low) > (high - close) * 0.5
 bear_grab = liq_grab_show and high > recent_hi[1] and close < high and (high - close) > (close - low) * 0.5
 
-if bull_grab
-    label.new(bar_index, low, "Sweep", color=color.new(C_BULL, 20), textcolor=C_WHITE, style=label.style_label_up, size=size.tiny)
-if bear_grab
-    label.new(bar_index, high, "Sweep", color=color.new(C_BEAR, 20), textcolor=C_WHITE, style=label.style_label_down, size=size.tiny)
-
+// EQH/EQL labels and lines removed from chart
+// Sweep labels removed from chart
+// (Logic still feeds into confluence scoring and alerts)
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ▶ ICT KILLZONE SESSION HIGHLIGHTING
+// ▶ ICT KILLZONE SESSION DETECTION (logic kept, bgcolor removed by default)
 // ══════════════════════════════════════════════════════════════════════════════
 utc_hour = hour(time, "UTC")
-is_asia   = kz_show and kz_asia   and (utc_hour >= 20 or utc_hour < 0)
-is_london = kz_show and kz_london and (utc_hour >= 7 and utc_hour < 10)
-is_ny     = kz_show and kz_ny     and (utc_hour >= 12 and utc_hour < 15)
+is_asia   = kz_asia   and (utc_hour >= 20 or utc_hour < 0)
+is_london = kz_london and (utc_hour >= 7 and utc_hour < 10)
+is_ny     = kz_ny     and (utc_hour >= 12 and utc_hour < 15)
 is_killzone = is_london or is_ny  // Only London & NY are "active" killzones for signals
 
-bgcolor(is_asia   ? color.new(C_KZ_ASIA, 95) : na, title="Asia KZ")
-bgcolor(is_london ? color.new(C_KZ_LON, 95)  : na, title="London KZ")
-bgcolor(is_ny     ? color.new(C_KZ_NY, 95)   : na, title="NY KZ")
+// Killzone bgcolor only shown if kz_show enabled (default off)
+bgcolor(kz_show and is_asia   ? color.new(C_KZ_ASIA, 95) : na, title="Asia KZ")
+bgcolor(kz_show and is_london ? color.new(C_KZ_LON, 95)  : na, title="London KZ")
+bgcolor(kz_show and is_ny     ? color.new(C_KZ_NY, 95)   : na, title="NY KZ")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ RSI DIVERGENCE DETECTION
@@ -498,7 +463,14 @@ if not na(rsi_ph) and not na(price_ph)
     prev_price_hi := price_ph
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ▶ PREVIOUS DAY / WEEK LEVELS PLOT
+// ▶ EMA PLOTS — Only shown if ema_show enabled (default off)
+// ══════════════════════════════════════════════════════════════════════════════
+plot(ema_show ? ema_fast : na, "EMA Fast",  color=color.new(C_GOLD, 20),    linewidth=1)
+plot(ema_show ? ema_slow : na, "EMA Slow",  color=color.new(#FF9800, 30),   linewidth=1)
+plot(ema_show ? ema_base : na, "EMA Base",  color=color.new(C_NEUTRAL, 40), linewidth=2)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ▶ PDH/PDL/PWH/PWL — Only shown if user enables (default off)
 // ══════════════════════════════════════════════════════════════════════════════
 plot(pdhl_show ? prev_day_high : na, "PDH", color=color.new(#FF9800, 40), linewidth=1, style=plot.style_stepline_diamond)
 plot(pdhl_show ? prev_day_low  : na, "PDL", color=color.new(#FF9800, 40), linewidth=1, style=plot.style_stepline_diamond)
@@ -506,17 +478,11 @@ plot(pwhl_show ? prev_week_high: na, "PWH", color=color.new(#E040FB, 40), linewi
 plot(pwhl_show ? prev_week_low : na, "PWL", color=color.new(#E040FB, 40), linewidth=2, style=plot.style_stepline_diamond)
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ▶ EMA PLOTS
-// ══════════════════════════════════════════════════════════════════════════════
-plot(ema_fast, "EMA Fast",  color=color.new(C_GOLD, 20),    linewidth=1)
-plot(ema_slow, "EMA Slow",  color=color.new(#FF9800, 30),   linewidth=1)
-plot(ema_base, "EMA Base",  color=color.new(C_NEUTRAL, 40), linewidth=2)
-
-// ══════════════════════════════════════════════════════════════════════════════
-// ▶ CANDLE COLORING
+// ▶ CANDLE COLORING — Only if barcolor_show enabled (default off)
 // ══════════════════════════════════════════════════════════════════════════════
 candle_col = ms_state == "bullish" ? color.new(C_BULL, 60) : ms_state == "bearish" ? color.new(C_BEAR, 60) : color.new(C_NEUTRAL, 70)
-barcolor(candle_col)
+barcolor(barcolor_show ? candle_col : na)
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ CONFLUENCE SCORING & SIGNAL ENGINE
@@ -540,8 +506,6 @@ plotshape(strong_long,  "Strong Long",  shape.triangleup,   location.belowbar, c
 plotshape(strong_short, "Strong Short", shape.triangledown,  location.abovebar, color=C_BEAR, size=size.normal, text="SHORT", textcolor=C_BEAR)
 plotshape(long_signal and not strong_long,   "Long",  shape.triangleup,   location.belowbar, color=color.new(C_BULL,40), size=size.small)
 plotshape(short_signal and not strong_short, "Short", shape.triangledown, location.abovebar, color=color.new(C_BEAR,40), size=size.small)
-
-
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ AUTO TP/SL LEVELS
@@ -580,87 +544,60 @@ if tp_show and (strong_long or strong_short)
         sl_lbl  := label.new(bar_index + 20, sl_price, "SL " + str.tostring(math.round(sl_price, 2)), color=color.new(C_BEAR, 30), textcolor=C_WHITE, style=label.style_label_left, size=size.tiny)
         tp_lbl  := label.new(bar_index + 20, tp_price, "TP " + str.tostring(math.round(tp_price, 2)), color=color.new(C_BULL, 30), textcolor=C_WHITE, style=label.style_label_left, size=size.tiny)
 
-// ══════════════════════════════════════════════════════════════════════════════
-// ▶ SMART MONEY FLOW BACKGROUND
-// ══════════════════════════════════════════════════════════════════════════════
-mf_bull_bg = money_flow > 60
-mf_bear_bg = money_flow < 40
-bgcolor(mf_bull_bg ? color.new(C_BULL, 97) : mf_bear_bg ? color.new(C_BEAR, 97) : na, title="Money Flow BG")
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ▶ DASHBOARD — Enhanced Info Panel
+// ▶ DASHBOARD — Compact 8-Row Info Panel
 // ══════════════════════════════════════════════════════════════════════════════
 dash_t_pos = dash_pos == "Top Left" ? position.top_left : dash_pos == "Bottom Right" ? position.bottom_right : dash_pos == "Bottom Left" ? position.bottom_left : position.top_right
 
-var table dash = table.new(dash_t_pos, 2, 14, bgcolor=color.new(#131722, 10), border_color=color.new(C_GOLD, 60), border_width=1, frame_color=color.new(C_GOLD, 40), frame_width=2)
+var table dash = table.new(dash_t_pos, 2, 8, bgcolor=color.new(#131722, 10), border_color=color.new(C_GOLD, 60), border_width=1, frame_color=color.new(C_GOLD, 60), frame_width=1)
 
 if dash_show and barstate.islast
     bias_txt  = ms_state == "bullish" ? "BULLISH" : ms_state == "bearish" ? "BEARISH" : "NEUTRAL"
     bias_col  = ms_state == "bullish" ? C_BULL : ms_state == "bearish" ? C_BEAR : C_NEUTRAL
-    trend_txt = bull_trend ? "UP" : bear_trend ? "DOWN" : "RANGE"
-    trend_col = bull_trend ? C_BULL : bear_trend ? C_BEAR : C_NEUTRAL
     htf_txt   = htf_bias == 1 ? "BULL" : htf_bias == -1 ? "BEAR" : "NEUTRAL"
     htf_col   = htf_bias == 1 ? C_BULL : htf_bias == -1 ? C_BEAR : C_NEUTRAL
     pd_txt    = in_premium ? "PREMIUM" : in_discount ? "DISCOUNT" : "EQ"
     pd_col    = in_premium ? C_PREMIUM : in_discount ? C_DISCOUNT : C_NEUTRAL
-    mf_txt    = money_flow > 60 ? "BUY PRESSURE" : money_flow < 40 ? "SELL PRESSURE" : "BALANCED"
-    mf_col    = money_flow > 60 ? C_BULL : money_flow < 40 ? C_BEAR : C_NEUTRAL
-    rsi_txt   = str.tostring(math.round(rsi_val, 1))
-    rsi_col   = rsi_val > 70 ? C_BEAR : rsi_val < 30 ? C_BULL : C_NEUTRAL
     kz_txt    = is_london ? "LONDON" : is_ny ? "NEW YORK" : is_asia ? "ASIA" : "OFF"
     kz_col    = is_london ? C_KZ_LON : is_ny ? C_KZ_NY : is_asia ? C_KZ_ASIA : C_NEUTRAL
     
     sig_score = math.max(score_long, score_short)
     sig_txt   = strong_long ? "STRONG LONG" : strong_short ? "STRONG SHORT" : long_signal ? "LONG" : short_signal ? "SHORT" : "WAIT"
     sig_col   = strong_long or long_signal ? C_BULL : strong_short or short_signal ? C_BEAR : C_NEUTRAL
-    
-    div_txt   = bull_div ? "BULL DIV" : bear_div ? "BEAR DIV" : "-"
-    div_col   = bull_div ? C_BULL : bear_div ? C_BEAR : C_NEUTRAL
 
-    // Header
-    table.cell(dash, 0, 0, "SmartGold Pro V2", text_color=C_GOLD, bgcolor=color.new(#131722, 0), text_size=size.normal)
+    // Row 0: Header
+    table.cell(dash, 0, 0, "SGA Pro V2", text_color=C_GOLD, bgcolor=color.new(#131722, 0), text_size=size.small)
     table.cell(dash, 1, 0, "", bgcolor=color.new(#131722, 0))
     table.merge_cells(dash, 0, 0, 1, 0)
 
-    table.cell(dash, 0, 1, "Structure", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-    table.cell(dash, 1, 1, bias_txt, text_color=bias_col, bgcolor=color.new(#1E2230, 30), text_size=size.small)
+    // Row 1: Structure
+    table.cell(dash, 0, 1, "Structure", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.tiny)
+    table.cell(dash, 1, 1, bias_txt, text_color=bias_col, bgcolor=color.new(#1E2230, 30), text_size=size.tiny)
 
-    table.cell(dash, 0, 2, "HTF Bias", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 30), text_size=size.small)
-    table.cell(dash, 1, 2, htf_txt + " (" + mtf_tf + ")", text_color=htf_col, bgcolor=color.new(#131722, 30), text_size=size.small)
+    // Row 2: HTF Bias
+    table.cell(dash, 0, 2, "HTF Bias", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 30), text_size=size.tiny)
+    table.cell(dash, 1, 2, htf_txt, text_color=htf_col, bgcolor=color.new(#131722, 30), text_size=size.tiny)
 
-    table.cell(dash, 0, 3, "Trend", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-    table.cell(dash, 1, 3, trend_txt, text_color=trend_col, bgcolor=color.new(#1E2230, 30), text_size=size.small)
+    // Row 3: Zone
+    table.cell(dash, 0, 3, "Zone", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.tiny)
+    table.cell(dash, 1, 3, pd_txt, text_color=pd_col, bgcolor=color.new(#1E2230, 30), text_size=size.tiny)
 
-    table.cell(dash, 0, 4, "Zone", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 30), text_size=size.small)
-    table.cell(dash, 1, 4, pd_txt, text_color=pd_col, bgcolor=color.new(#131722, 30), text_size=size.small)
+    // Row 4: Killzone
+    table.cell(dash, 0, 4, "Killzone", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 30), text_size=size.tiny)
+    table.cell(dash, 1, 4, kz_txt, text_color=kz_col, bgcolor=color.new(#131722, 30), text_size=size.tiny)
 
-    table.cell(dash, 0, 5, "Money Flow", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-    table.cell(dash, 1, 5, mf_txt, text_color=mf_col, bgcolor=color.new(#1E2230, 30), text_size=size.small)
+    // Row 5: Confluence
+    table.cell(dash, 0, 5, "Confluence", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.tiny)
+    table.cell(dash, 1, 5, str.tostring(sig_score) + "/7", text_color=sig_score >= 5 ? C_GOLD : sig_score >= 4 ? C_BULL : C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.tiny)
 
-    table.cell(dash, 0, 6, "RSI", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 30), text_size=size.small)
-    table.cell(dash, 1, 6, rsi_txt, text_color=rsi_col, bgcolor=color.new(#131722, 30), text_size=size.small)
+    // Row 6: Signal
+    table.cell(dash, 0, 6, "Signal", text_color=C_WHITE, bgcolor=color.new(#0D47A1, 20), text_size=size.tiny)
+    table.cell(dash, 1, 6, sig_txt, text_color=sig_col, bgcolor=color.new(#0D47A1, 20), text_size=size.small)
 
-    table.cell(dash, 0, 7, "Divergence", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-    table.cell(dash, 1, 7, div_txt, text_color=div_col, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-
-    table.cell(dash, 0, 8, "Killzone", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 30), text_size=size.small)
-    table.cell(dash, 1, 8, kz_txt, text_color=kz_col, bgcolor=color.new(#131722, 30), text_size=size.small)
-
-    table.cell(dash, 0, 9, "ATR (14)", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-    table.cell(dash, 1, 9, "$" + str.tostring(math.round(atr_val, 2)), text_color=C_GOLD, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-
-    table.cell(dash, 0, 10, "FVG Active", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 30), text_size=size.small)
-    table.cell(dash, 1, 10, str.tostring(array.size(bull_fvg_boxes)) + "B / " + str.tostring(array.size(bear_fvg_boxes)) + "S", text_color=C_GOLD, bgcolor=color.new(#131722, 30), text_size=size.small)
-
-    table.cell(dash, 0, 11, "Confluence", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-    table.cell(dash, 1, 11, str.tostring(sig_score) + " / 7", text_color=sig_score >= 5 ? C_GOLD : sig_score >= 4 ? C_BULL : C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
-
-    // Signal row
-    table.cell(dash, 0, 12, "Signal", text_color=C_WHITE, bgcolor=color.new(#0D47A1, 20), text_size=size.small)
-    table.cell(dash, 1, 12, sig_txt, text_color=sig_col, bgcolor=color.new(#0D47A1, 20), text_size=size.normal)
-
-    table.cell(dash, 0, 13, "Price", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 0), text_size=size.small)
-    table.cell(dash, 1, 13, str.tostring(close, "#.##"), text_color=C_GOLD, bgcolor=color.new(#131722, 0), text_size=size.small)
+    // Row 7: Price
+    table.cell(dash, 0, 7, "Price", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 0), text_size=size.tiny)
+    table.cell(dash, 1, 7, str.tostring(close, "#.##"), text_color=C_GOLD, bgcolor=color.new(#131722, 0), text_size=size.tiny)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ ALERTS
