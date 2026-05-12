@@ -195,6 +195,52 @@ def main() -> int:
 
     asyncio.run(run_ctx())
 
+    # ── Decision engine end-to-end (mock LLM) ───────────────────────────
+    from app.engine.decision_engine import evaluate_signal  # noqa: E402
+    from app.models.schemas import MacroContext, TradingViewAlert  # noqa: E402
+
+    async def run_engine() -> None:
+        # Reuse mock LLM mode
+        os.environ["LLM_MOCK_MODE"] = "true"
+        os.environ["MIN_CONFIDENCE"] = "0.60"
+
+        s3 = settings_mod.Settings()
+        alert = TradingViewAlert(
+            secret="x",
+            symbol="OANDA:XAUUSD",
+            timeframe="60",
+            signal="strong_long",
+            price=2345.67,
+        )
+        ctx = MacroContext(
+            dxy_price=104.2,
+            dxy_change_pct=-0.15,
+            us10y_yield=4.12,
+            news_headlines=["[Reuters] Gold holds steady as dollar slips"],
+        )
+        decision = await evaluate_signal(alert, ctx, settings=s3)
+        # Mock returns action=skip confidence=0.45 → policy keeps as skip
+        assert decision.action == "skip"
+        assert 0.0 <= decision.confidence <= 1.0
+        print(f"[ok]   engine returns validated decision: action={decision.action} conf={decision.confidence}")
+
+        # Test policy: even if LLM said execute with low conf, policy → skip.
+        # Patch the _parse_and_validate path via direct call:
+        from app.engine.decision_engine import _apply_policy, _parse_and_validate
+        raw = {"action": "execute", "confidence": 0.5, "reasoning": "r"}
+        d = _parse_and_validate(raw)
+        d2 = _apply_policy(d, s3)
+        assert d2.action == "skip", f"policy should downgrade: {d2.action}"
+        assert "Policy override" in d2.risk_notes
+        print("[ok]   policy downgrades low-confidence execute → skip")
+
+        # Test: invalid action coerced
+        bad = _parse_and_validate({"action": "buy_now", "confidence": 0.9, "reasoning": ""})
+        assert bad.action == "skip"
+        print("[ok]   invalid action coerced to skip")
+
+    asyncio.run(run_engine())
+
     print("\nALL OFFLINE VALIDATIONS PASSED")
     return 0
 
