@@ -525,24 +525,10 @@ barcolor(candle_col)
 // Signals only fire during killzones with minimum confluence
 
 // Long confluence
-score_long = 0
-score_long += ms_state == "bullish" ? 1 : 0
-score_long += bull_grab ? 1 : 0
-score_long += in_discount ? 1 : 0
-score_long += bull_trend ? 1 : 0
-score_long += htf_bias == 1 ? 1 : 0
-score_long += bull_div ? 1 : 0
-score_long += money_flow > 55 ? 1 : 0
+score_long = (ms_state == "bullish" ? 1 : 0) + (bull_grab ? 1 : 0) + (in_discount ? 1 : 0) + (bull_trend ? 1 : 0) + (htf_bias == 1 ? 1 : 0) + (bull_div ? 1 : 0) + (money_flow > 55 ? 1 : 0)
 
 // Short confluence
-score_short = 0
-score_short += ms_state == "bearish" ? 1 : 0
-score_short += bear_grab ? 1 : 0
-score_short += in_premium ? 1 : 0
-score_short += bear_trend ? 1 : 0
-score_short += htf_bias == -1 ? 1 : 0
-score_short += bear_div ? 1 : 0
-score_short += money_flow < 45 ? 1 : 0
+score_short = (ms_state == "bearish" ? 1 : 0) + (bear_grab ? 1 : 0) + (in_premium ? 1 : 0) + (bear_trend ? 1 : 0) + (htf_bias == -1 ? 1 : 0) + (bear_div ? 1 : 0) + (money_flow < 45 ? 1 : 0)
 
 // Signal thresholds
 long_signal  = score_long >= 4 and rsi_val < 65
@@ -679,16 +665,16 @@ if dash_show and barstate.islast
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ ALERTS
 // ══════════════════════════════════════════════════════════════════════════════
-alertcondition(strong_long,   "Strong Long (5+ confluence)",  "SGA Pro V2: STRONG LONG signal on XAU/USD — 5+ confluence factors aligned")
-alertcondition(strong_short,  "Strong Short (5+ confluence)", "SGA Pro V2: STRONG SHORT signal on XAU/USD — 5+ confluence factors aligned")
+alertcondition(strong_long,   "Strong Long (5+ confluence)",  "SGA Pro V2: STRONG LONG signal on XAU/USD - 5+ confluence factors aligned")
+alertcondition(strong_short,  "Strong Short (5+ confluence)", "SGA Pro V2: STRONG SHORT signal on XAU/USD - 5+ confluence factors aligned")
 alertcondition(long_signal,   "Long Signal (4+ confluence)",  "SGA Pro V2: Long signal on XAU/USD")
 alertcondition(short_signal,  "Short Signal (4+ confluence)", "SGA Pro V2: Short signal on XAU/USD")
 alertcondition(bull_choch,    "Bullish CHoCH",    "SGA Pro V2: Bullish Change of Character")
 alertcondition(bear_choch,    "Bearish CHoCH",    "SGA Pro V2: Bearish Change of Character")
 alertcondition(bull_bos,      "Bullish BOS",      "SGA Pro V2: Bullish Break of Structure")
 alertcondition(bear_bos,      "Bearish BOS",      "SGA Pro V2: Bearish Break of Structure")
-alertcondition(sfp_bull,      "Bearish SFP",      "SGA Pro V2: Swing Failure Pattern — potential reversal DOWN")
-alertcondition(sfp_bear,      "Bullish SFP",      "SGA Pro V2: Swing Failure Pattern — potential reversal UP")
+alertcondition(sfp_bull,      "Bearish SFP",      "SGA Pro V2: Swing Failure Pattern - potential reversal DOWN")
+alertcondition(sfp_bear,      "Bullish SFP",      "SGA Pro V2: Swing Failure Pattern - potential reversal UP")
 alertcondition(bull_div,      "Bullish Divergence","SGA Pro V2: RSI Bullish Divergence detected")
 alertcondition(bear_div,      "Bearish Divergence","SGA Pro V2: RSI Bearish Divergence detected")
 alertcondition(bull_grab,     "Bullish Liq Sweep", "SGA Pro V2: Bullish Liquidity Sweep")
