@@ -679,8 +679,8 @@ if dash_show and barstate.islast
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ ALERTS
 // ══════════════════════════════════════════════════════════════════════════════
-alertcondition(strong_long,   "Strong Long (5+ confluence)",  "SGA Pro V2: STRONG LONG — Confluence " + str.tostring(score_long) + "/7")
-alertcondition(strong_short,  "Strong Short (5+ confluence)", "SGA Pro V2: STRONG SHORT — Confluence " + str.tostring(score_short) + "/7")
+alertcondition(strong_long,   "Strong Long (5+ confluence)",  "SGA Pro V2: STRONG LONG signal on XAU/USD — 5+ confluence factors aligned")
+alertcondition(strong_short,  "Strong Short (5+ confluence)", "SGA Pro V2: STRONG SHORT signal on XAU/USD — 5+ confluence factors aligned")
 alertcondition(long_signal,   "Long Signal (4+ confluence)",  "SGA Pro V2: Long signal on XAU/USD")
 alertcondition(short_signal,  "Short Signal (4+ confluence)", "SGA Pro V2: Short signal on XAU/USD")
 alertcondition(bull_choch,    "Bullish CHoCH",    "SGA Pro V2: Bullish Change of Character")
