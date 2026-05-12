@@ -60,8 +60,14 @@ signals), it:
 4. **Notifies Telegram** only when action is `execute` or `reduce`.
 5. **Writes an audit row** to SQLite for every signal, even skipped ones.
 6. **Renders a dashboard** at `https://YOUR_DOMAIN/ui/` with rolling
-   stats, a filterable signal table, and a per-signal detail view
-   showing the LLM's reasoning and the macro snapshot it used.
+   stats, a filterable signal table, a **win-rate-by-signal chart** (once
+   outcomes are recorded), and a per-signal detail view showing the LLM's
+   reasoning, the macro snapshot it used, and an inline form to record
+   win/loss/breakeven outcomes.
+7. **(Optional) Places broker orders** via MetaTrader 5 when MT5 is
+   enabled and properly configured. Disabled by default — the bridge ships
+   with a safe **NoopExecutor** so the rest of the pipeline works on any
+   Linux VPS without ever touching a broker.
 
 Mock mode (`LLM_MOCK_MODE=true`) bypasses the real LLM so you can test
 plumbing end-to-end without spending tokens.
