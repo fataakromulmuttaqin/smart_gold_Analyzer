@@ -136,6 +136,12 @@ var float  ms_level  = na
 var line   ms_line   = na
 var label  ms_label  = na
 
+// Anti-overlap: track last BOS/CHoCH bar and level to prevent stacking
+var int   last_ms_bar   = 0      // bar_index of last BOS/CHoCH label
+var float last_ms_level = na     // price level of last BOS/CHoCH label
+int       ms_cooldown   = ms_swing_len * 2  // minimum bars between labels
+float     ms_level_thr  = ta.atr(14) * 0.3  // minimum price distance between labels
+
 // BOS: Break of Structure (trend continuation)
 // CHoCH: Change of Character (trend reversal)
 bull_bos  = ms_show and ms_show_bos  and not na(last_sh) and close > last_sh and ms_state == "bullish"
@@ -143,34 +149,56 @@ bull_choch= ms_show and ms_show_choch and not na(last_sh) and close > last_sh an
 bear_bos  = ms_show and ms_show_bos  and not na(last_sl) and close < last_sl and ms_state == "bearish"
 bear_choch= ms_show and ms_show_choch and not na(last_sl) and close < last_sl and ms_state == "bullish"
 
-if bull_choch
+// Helper: check if enough distance from last label (bar distance AND price distance)
+ms_bar_ok    = (bar_index - last_ms_bar) >= ms_cooldown
+ms_lvl_ok_hi = na(last_ms_level) or math.abs(last_sh - last_ms_level) > ms_level_thr
+ms_lvl_ok_lo = na(last_ms_level) or math.abs(last_sl - last_ms_level) > ms_level_thr
+
+if bull_choch and (ms_bar_ok or ms_lvl_ok_hi)
     ms_state := "bullish"
     line.new(last_sh_bar, last_sh, bar_index, last_sh, color=C_BULL, width=1, style=line.style_dashed)
     label.new(bar_index, last_sh, "CHoCH", color=color.new(C_BULL, 20), textcolor=C_WHITE, style=label.style_label_down, size=size.small)
+    last_ms_bar   := bar_index
+    last_ms_level := last_sh
+else if bull_choch
+    ms_state := "bullish"
 
-if bull_bos
+if bull_bos and (ms_bar_ok or ms_lvl_ok_hi)
     line.new(last_sh_bar, last_sh, bar_index, last_sh, color=C_BULL, width=1)
     label.new(bar_index, last_sh, "BOS", color=color.new(C_BULL, 20), textcolor=C_WHITE, style=label.style_label_down, size=size.small)
+    last_ms_bar   := bar_index
+    last_ms_level := last_sh
 
-if bear_choch
+if bear_choch and (ms_bar_ok or ms_lvl_ok_lo)
     ms_state := "bearish"
     line.new(last_sl_bar, last_sl, bar_index, last_sl, color=C_BEAR, width=1, style=line.style_dashed)
     label.new(bar_index, last_sl, "CHoCH", color=color.new(C_BEAR, 20), textcolor=C_WHITE, style=label.style_label_up, size=size.small)
+    last_ms_bar   := bar_index
+    last_ms_level := last_sl
+else if bear_choch
+    ms_state := "bearish"
 
-if bear_bos
+if bear_bos and (ms_bar_ok or ms_lvl_ok_lo)
     line.new(last_sl_bar, last_sl, bar_index, last_sl, color=C_BEAR, width=1)
     label.new(bar_index, last_sl, "BOS", color=color.new(C_BEAR, 20), textcolor=C_WHITE, style=label.style_label_up, size=size.small)
+    last_ms_bar   := bar_index
+    last_ms_level := last_sl
 
 // Initialize state from first valid structure
 if ms_state == "neutral" and not na(last_sh) and not na(last_sl)
     ms_state := last_sh > last_sl ? "bullish" : "bearish"
 
-// Swing High/Low labels
+// Swing High/Low labels — also with anti-overlap logic
+var int last_hh_bar = 0
+var int last_ll_bar = 0
+
 if ms_show and ms_show_swing
-    if not na(swing_hi)
+    if not na(swing_hi) and (bar_index - last_hh_bar) >= ms_swing_len
         label.new(bar_index - ms_swing_len, swing_hi, "HH", color=color.new(C_BEAR,60), textcolor=C_WHITE, style=label.style_label_down, size=size.tiny)
-    if not na(swing_lo)
+        last_hh_bar := bar_index
+    if not na(swing_lo) and (bar_index - last_ll_bar) >= ms_swing_len
         label.new(bar_index - ms_swing_len, swing_lo, "LL", color=color.new(C_BULL,60), textcolor=C_WHITE, style=label.style_label_up, size=size.tiny)
+        last_ll_bar := bar_index
 
 
 // ══════════════════════════════════════════════════════════════════════════════
