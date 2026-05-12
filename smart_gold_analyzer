@@ -1,9 +1,9 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
 // © SmartGold Analyzer Pro | Inspired by LuxAlgo Price Action Concepts & Oscillator Matrix
 // Designed specifically for XAU/USD (Gold) Analysis
-// Compatible with TradingView Pine Script v5
+// Compatible with TradingView Pine Script v6
 
-//@version=5
+//@version=6
 indicator("SmartGold Analyzer Pro [XAU/USD]", shorttitle="SGA Pro", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -69,6 +69,7 @@ rsi_len        = input.int(14,   "RSI Length", minval=5, maxval=50,  group=grpTr
 dash_show    = input.bool(true,  "Show Dashboard",               group=grpDash)
 dash_pos     = input.string("Top Right", "Position", options=["Top Right","Top Left","Bottom Right","Bottom Left"], group=grpDash)
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ COLORS & CONSTANTS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -109,8 +110,8 @@ swing_lo = ta.pivotlow(low,  ms_swing_len, ms_swing_len)
 // Track last confirmed swing points
 var float last_sh = na
 var float last_sl = na
-var int   last_sh_bar = na
-var int   last_sl_bar = na
+var int   last_sh_bar = 0
+var int   last_sl_bar = 0
 
 var float prev_sh = na
 var float prev_sl = na
@@ -124,6 +125,7 @@ if not na(swing_lo)
     prev_sl    := last_sl
     last_sl    := swing_lo
     last_sl_bar:= bar_index - ms_swing_len
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ MARKET STRUCTURE — BOS & CHoCH DETECTION
@@ -169,6 +171,7 @@ if ms_show and ms_show_swing
         label.new(bar_index - ms_swing_len, swing_hi, "HH", color=color.new(C_BEAR,60), textcolor=C_WHITE, style=label.style_label_down, size=size.tiny)
     if not na(swing_lo)
         label.new(bar_index - ms_swing_len, swing_lo, "LL", color=color.new(C_BULL,60), textcolor=C_WHITE, style=label.style_label_up, size=size.tiny)
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ ORDER BLOCKS
@@ -242,6 +245,7 @@ if ob_show_brk and array.size(brk_ob_boxes) > 0
         if not na(b)
             box.set_right(b, bar_index + 5)
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ FAIR VALUE GAPS (FVG)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -287,6 +291,7 @@ if fvg_show and array.size(bear_fvg_boxes) > 0
                 array.remove(bear_fvg_boxes, i)
                 break
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ LIQUIDITY — EQUAL HIGHS & LOWS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -295,8 +300,8 @@ liq_pl = ta.pivotlow(low,  liq_len, liq_len)
 
 var float eq_hi_level = na
 var float eq_lo_level = na
-var int   eq_hi_bar   = na
-var int   eq_lo_bar   = na
+var int   eq_hi_bar   = 0
+var int   eq_lo_bar   = 0
 var float prev_liq_ph = na
 var float prev_liq_pl = na
 
@@ -339,6 +344,7 @@ if bear_grab
     box.new(bar_index - 1, close, bar_index + 1, high, border_color=color.new(C_BEAR, 0), bgcolor=color.new(C_BEAR, 70), border_width=2)
     label.new(bar_index, high, "Bear Grab", color=color.new(C_BEAR, 20), textcolor=C_WHITE, style=label.style_label_down, size=size.small)
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ EMA PLOTS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -377,6 +383,7 @@ mf_bull_bg = money_flow > 60
 mf_bear_bg = money_flow < 40
 bgcolor(mf_bull_bg ? color.new(C_BULL, 97) : mf_bear_bg ? color.new(C_BEAR, 97) : na, title="Money Flow BG")
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ GOLD-SPECIFIC: ATR-Based Dynamic S/R Zones
 // ══════════════════════════════════════════════════════════════════════════════
@@ -393,6 +400,7 @@ if not na(last_sh) and not na(atr_val)
     if not na(atr_bear_line)
         line.delete(atr_bear_line)
     atr_bear_line := line.new(last_sh_bar, last_sh - atr_val, bar_index + 10, last_sh - atr_val, color=color.new(C_BEAR, 50), style=line.style_dashed, width=1)
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ DASHBOARD — Info Panel
@@ -420,8 +428,10 @@ if dash_show and barstate.islast
     grab_col  = bull_grab ? C_BULL : bear_grab ? C_BEAR : C_NEUTRAL
     fvg_txt   = str.tostring(array.size(bull_fvg_boxes)) + "B / " + str.tostring(array.size(bear_fvg_boxes)) + "S"
 
-    // Header
-    table.cell(dash, 0, 0, "SmartGold XAU/USD", text_color=C_GOLD, bgcolor=color.new(#131722, 0), text_size=size.normal, colspan=2)
+    // Header — v6: use table.merge_cells() instead of colspan parameter
+    table.cell(dash, 0, 0, "SmartGold XAU/USD", text_color=C_GOLD, bgcolor=color.new(#131722, 0), text_size=size.normal)
+    table.cell(dash, 1, 0, "", bgcolor=color.new(#131722, 0))
+    table.merge_cells(dash, 0, 0, 1, 0)
 
     // Row 1
     table.cell(dash, 0, 1, "Structure Bias", text_color=C_NEUTRAL, bgcolor=color.new(#1E2230, 30), text_size=size.small)
@@ -458,6 +468,7 @@ if dash_show and barstate.islast
     // Row 9 — Last price
     table.cell(dash, 0, 9, "Price", text_color=C_NEUTRAL, bgcolor=color.new(#131722, 0), text_size=size.small)
     table.cell(dash, 1, 9, str.tostring(close, "#.##"), text_color=C_GOLD, bgcolor=color.new(#131722, 0), text_size=size.small)
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ▶ ALERTS
