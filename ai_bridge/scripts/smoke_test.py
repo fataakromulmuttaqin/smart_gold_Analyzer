@@ -343,20 +343,20 @@ def test_schema_validation() -> None:
         "symbol": "XAUUSD",
         "timeframe": "60",
         "signal": "strong_long",
-        "price": 2345.67,
-        "time": "2024-01-01T00:00:00Z",
+        "price": 3245.67,
+        "time": "2026-05-12T18:00:00Z",
         "ms_state": "bullish",
         "rsi": 52.0,
-        "atr": 3.0,
+        "atr": 8.40,
         "money_flow": 65.0,
-        "ema_fast": 2340.0,
-        "ema_slow": 2330.0,
-        "ema_base": 2290.0,
+        "ema_fast": 3243.10,
+        "ema_slow": 3220.40,
+        "ema_base": 3175.70,
     }
     alert = TradingViewAlert.model_validate(payload)
     assert alert.symbol == "XAUUSD"
     assert alert.signal == "strong_long"
-    assert alert.price == 2345.67
+    assert alert.price == 3245.67
     _pass("schema_validation", "TradingViewAlert parses correctly")
 
 

@@ -86,13 +86,13 @@ def main() -> int:
     print(f"[ok]   long TIMEOUT scenario: exit_idx=2 reason=timeout close={exit_price}")
 
     # Scenario D: short hits TP (price drops to take)
-    entry_s = 2350.0
-    stop_s = entry_s + 5.0     # SL at 2355
-    take_s = entry_s - 10.0    # TP at 2340 (rr=2)
+    entry_s = 3250.0
+    stop_s = entry_s + 5.0     # SL at 3255
+    take_s = entry_s - 10.0    # TP at 3240 (rr=2)
     bars_s = [
-        {"high": 2352, "low": 2348, "close": 2350},
-        {"high": 2352, "low": 2345, "close": 2347},
-        {"high": 2349, "low": 2339, "close": 2340},   # TP hit
+        {"high": 3252, "low": 3248, "close": 3250},
+        {"high": 3252, "low": 3245, "close": 3247},
+        {"high": 3249, "low": 3239, "close": 3240},   # TP hit
     ]
     exit_idx, exit_price, reason = _exit_short(bars_s, 0, entry_s, stop_s, take_s, max_bars=10)
     assert reason == "tp", reason

@@ -19,15 +19,15 @@ curl -sS -X POST "${BASE_URL}/webhook/tradingview" \
   "symbol":     "XAUUSD",
   "timeframe":  "60",
   "signal":     "strong_long",
-  "price":      2345.67,
+  "price":      3245.67,
   "time":       "2026-05-12T18:00:00Z",
   "ms_state":   "bullish",
   "rsi":        52.3,
-  "atr":        3.21,
+  "atr":        8.40,
   "money_flow": 67.5,
-  "ema_fast":   2340.5,
-  "ema_slow":   2332.1,
-  "ema_base":   2290.7
+  "ema_fast":   3243.10,
+  "ema_slow":   3220.40,
+  "ema_base":   3175.70
 }
 JSON
 echo

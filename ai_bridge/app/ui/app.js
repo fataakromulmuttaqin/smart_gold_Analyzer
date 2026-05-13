@@ -383,7 +383,7 @@
           <label class="outcome-label">
             Exit price
             <input id="exit-input-${id}" type="number" step="0.01"
-                   placeholder="e.g. 2350.00" class="outcome-pnl" />
+                   placeholder="e.g. 3258.00" class="outcome-pnl" />
           </label>
           <label class="outcome-label">
             P&amp;L ($) — optional override

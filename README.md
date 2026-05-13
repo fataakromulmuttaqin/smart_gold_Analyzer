@@ -50,12 +50,12 @@ Pine `alert()` sends this JSON to your FastAPI server (`ai_bridge/`):
 {
   "secret": "WEBHOOK_SECRET",
   "symbol": "XAUUSD", "timeframe": "60",
-  "signal": "strong_long", "price": 2345.67,
-  "ema_fast": 2344.10, "ema_mid": 2338.80,
-  "ema_slow": 2330.40, "ema_base": 2290.70,
-  "psar": 2339.55, "psar_below": true,
+  "signal": "strong_long", "price": 3245.67,
+  "ema_fast": 3243.10, "ema_mid": 3234.80,
+  "ema_slow": 3220.40, "ema_base": 3175.70,
+  "psar": 3237.55, "psar_below": true,
   "volume": 1850, "volume_sma": 980, "volume_ratio": 1.89,
-  "bull_trend": true, "atr": 3.21,
+  "bull_trend": true, "atr": 8.40,
   "bars_since_entry": 0, "exit_reason": ""
 }
 ```
@@ -151,7 +151,7 @@ raw_lot     = risk_usd / (stop_distance × $/point/lot)
 final_lot   = round_down_to_step(clamp(raw_lot, vol_min, vol_max))
 ```
 
-**Example**: equity $10k, 1% risk, hybrid stop=$2.56 → lot = 0.39. Final loss if hit = exactly $100.
+**Example**: equity $10k, 1% risk, hybrid stop=$8.00 → lot = 0.12. Final loss if hit = exactly $100.
 
 When LLM returns `action=reduce`, risk drops to `RISK_PER_TRADE_PCT_REDUCE` (default 0.5%).
 

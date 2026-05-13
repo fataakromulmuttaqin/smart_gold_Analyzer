@@ -210,7 +210,7 @@ def main() -> int:
             symbol="OANDA:XAUUSD",
             timeframe="60",
             signal="strong_long",
-            price=2345.67,
+            price=3245.67,
         )
         ctx = MacroContext(
             dxy_price=104.2,
@@ -247,7 +247,7 @@ def main() -> int:
 
     a = TradingViewAlert(
         secret="x", symbol="OANDA:XAUUSD", timeframe="60",
-        signal="strong_long", price=2345.67,
+        signal="strong_long", price=3245.67,
     )
     c = MacroContext(
         dxy_price=104.2, dxy_change_pct=-0.15,
@@ -360,22 +360,22 @@ def main() -> int:
         "symbol": "XAUUSD",
         "timeframe": "60",
         "signal": "strong_long",
-        "price": 2345.67,
+        "price": 3245.67,
         "time": "2026-05-12T18:00:00Z",
         "ms_state": "bullish",
         "rsi": 52.34,
-        "atr": 3.21,
+        "atr": 8.40,
         "money_flow": 67.5,
-        "ema_fast": 2340.5,
-        "ema_slow": 2332.1,
-        "ema_base": 2290.7,
+        "ema_fast": 3243.10,
+        "ema_slow": 3220.40,
+        "ema_base": 3175.70,
     }
     # With our pydantic stub, just construct & verify field access.
     parsed = TradingViewAlert(**sample_payload)
     assert parsed.secret == "abc123xyz"
     assert parsed.symbol == "XAUUSD"
     assert parsed.signal == "strong_long"
-    assert parsed.price == 2345.67
+    assert parsed.price == 3245.67
     assert parsed.ms_state == "bullish"
     assert parsed.rsi == 52.34
     print("[ok]   Pine Script sample payload matches TradingViewAlert schema")
@@ -388,7 +388,7 @@ def main() -> int:
         # Noop always returns placed=False
         alert_exec = TradingViewAlert(
             secret="x", symbol="XAUUSD", timeframe="60",
-            signal="strong_long", price=2345.67,
+            signal="strong_long", price=3245.67,
         )
         d_exec = _LLMDecision(
             action="execute", confidence=0.82, reasoning="ok", risk_notes="",
@@ -452,7 +452,7 @@ def main() -> int:
             )
             alert_wr = TradingViewAlert(
                 secret="x", symbol="XAUUSD", timeframe="60",
-                signal=sig, price=2345.0,
+                signal=sig, price=3245.0,
             )
             sid = await sl.record(alert_wr, c, decision, notified=True)
             ok = await sl.update_outcome(sid, outcome, pnl)
