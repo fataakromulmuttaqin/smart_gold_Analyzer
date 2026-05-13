@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     newsapi_key: str = Field(default="", alias="NEWSAPI_KEY")
     enable_macro_context: bool = Field(default=True, alias="ENABLE_MACRO_CONTEXT")
 
+    # ── Fallback data providers (when Yahoo Finance is blocked) ───────────
+    # Twelve Data: free tier = 800 API calls/day. Sign up: https://twelvedata.com
+    twelvedata_api_key: str = Field(default="", alias="TWELVEDATA_API_KEY")
+    # Alpha Vantage: free tier = 25 API calls/day. Sign up: https://www.alphavantage.co
+    alphavantage_api_key: str = Field(default="", alias="ALPHAVANTAGE_API_KEY")
+
     # ── Telegram ─────────────────────────────────────────────────────────
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
