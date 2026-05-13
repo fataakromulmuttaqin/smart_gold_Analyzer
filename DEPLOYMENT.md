@@ -294,6 +294,66 @@ testing the plumbing end-to-end without burning tokens.
 
 ---
 
+## 13. Optional: enable MT5 auto-execution
+
+The bridge ships a **NoopExecutor** by default — no orders are ever sent
+to a broker. To enable real execution via MetaTrader 5:
+
+1. **Platform**: MT5 Python SDK only runs on **Windows (or Linux+Wine)**.
+   If you're on a plain Linux VPS, the import fails silently and the
+   bridge keeps using NoopExecutor — the rest of the pipeline continues
+   to work (LLM decisions, Telegram alerts, dashboard).
+2. On a Windows VPS, install MT5 + the Python package inside the bridge
+   environment:
+   ```powershell
+   pip install MetaTrader5
+   ```
+3. Edit `.env`:
+   ```env
+   MT5_ENABLED=true
+   MT5_LOGIN=12345678
+   MT5_PASSWORD=your_trading_password
+   MT5_SERVER=Exness-MT5Trial8
+   MT5_SYMBOL=XAUUSD            # as your broker names it
+   MT5_RISK_PCT=1.0             # % of equity per trade
+   MT5_FIXED_LOT=0.0            # set >0 to bypass risk-based sizing
+   MT5_FALLBACK_STOP_POINTS=2000
+   ```
+4. Restart: `docker compose up -d` (or systemd restart).
+5. `/health` should now show `"executor":"mt5"` instead of `"noop"`.
+
+Stop distance uses `decision.suggested_stop_atr_mult × alert.atr` (both
+set by the LLM / Pine script). Take-profit uses `decision.suggested_rr`.
+Volume is sized so the monetary risk of `stop_distance` equals
+`equity × MT5_RISK_PCT/100`, clamped to broker min/max and rounded to
+the volume step.
+
+**Safety rails**: any executor error — missing symbol, broker rejection,
+network hiccup — is caught. The signal is still logged with
+`execution_placed=0` and `execution.error=...` visible in the dashboard.
+
+---
+
+## 14. Optional: record trade outcomes for the win-rate chart
+
+The dashboard's **Win Rate by Signal** chart only lights up once you
+start recording the outcomes of closed trades. Use one of:
+
+- Click the **"Mark outcome"** button in the signal detail modal and
+  pick win / loss / breakeven (+ optional PnL).
+- Or call the API directly after your trade closes:
+  ```bash
+  curl -X PATCH https://YOUR_DOMAIN/api/signals/123/outcome \
+    -H "Content-Type: application/json" \
+    -d '{"outcome":"win","pnl":42.50}'
+  ```
+
+Each update sets `outcome`, `pnl`, `closed_at` on the audit row. The
+`/api/winrate?hours=720` endpoint aggregates wins/losses per Pine-signal
+name (breakevens are counted but excluded from the win-rate denominator).
+
+---
+
 ## Need help?
 
 Open an issue on the repo:

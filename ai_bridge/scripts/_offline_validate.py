@@ -242,8 +242,8 @@ def main() -> int:
     asyncio.run(run_engine())
 
     # ── Telegram formatter (no network, just format) ────────────────────
-    from app.notifier.telegram import _format_message  # noqa: E402
     from app.models.schemas import LLMDecision as _LLMDecision  # noqa: E402
+    from app.notifier.telegram import _format_message  # noqa: E402
 
     a = TradingViewAlert(
         secret="x", symbol="OANDA:XAUUSD", timeframe="60",
@@ -379,6 +379,121 @@ def main() -> int:
     assert parsed.ms_state == "bullish"
     assert parsed.rsi == 52.34
     print("[ok]   Pine Script sample payload matches TradingViewAlert schema")
+
+    # ── Executor (noop + factory fallback when MT5 absent) ──────────────
+    from app.executor.base import ExecutionResult, NoopExecutor  # noqa: E402
+    from app.executor.factory import build_executor  # noqa: E402
+
+    async def run_executor() -> None:
+        # Noop always returns placed=False
+        alert_exec = TradingViewAlert(
+            secret="x", symbol="XAUUSD", timeframe="60",
+            signal="strong_long", price=2345.67,
+        )
+        d_exec = _LLMDecision(
+            action="execute", confidence=0.82, reasoning="ok", risk_notes="",
+        )
+        noop = NoopExecutor()
+        res = await noop.execute(alert_exec, d_exec)
+        assert isinstance(res, ExecutionResult)
+        assert res.placed is False and res.note.startswith("executor=noop")
+        # to_dict has full shape
+        d = res.to_dict()
+        assert "placed" in d and "order_id" in d and "side" in d
+        print(f"[ok]   NoopExecutor returns placed=False with note: {res.note[:60]}…")
+
+        # Factory: with MT5_ENABLED=false → returns NoopExecutor
+        os.environ["MT5_ENABLED"] = "false"
+        s_ex = settings_mod.Settings()
+        ex = build_executor(settings=s_ex)
+        assert ex.name == "noop"
+        print("[ok]   factory → noop when MT5_ENABLED=false")
+
+        # Factory: with MT5_ENABLED=true but MetaTrader5 package absent on Linux,
+        # factory catches ImportError and falls back to noop gracefully.
+        os.environ["MT5_ENABLED"] = "true"
+        os.environ["MT5_LOGIN"] = "12345"
+        os.environ["MT5_PASSWORD"] = "x"
+        os.environ["MT5_SERVER"] = "demo"
+        s_ex2 = settings_mod.Settings()
+        ex2 = build_executor(settings=s_ex2)
+        # Either it falls back to noop (no MetaTrader5 package), OR it imports
+        # but fails to init (also falls back to noop). Both are acceptable.
+        assert ex2.name == "noop", f"expected noop fallback, got {ex2.name}"
+        print("[ok]   factory → noop fallback when MT5 enabled but package absent")
+
+        # Reset for later tests
+        os.environ["MT5_ENABLED"] = "false"
+
+    asyncio.run(run_executor())
+
+    # ── Winrate aggregation ─────────────────────────────────────────────
+    tmp3 = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp3.close()
+    os.environ["SQLITE_PATH"] = tmp3.name
+
+    async def run_winrate() -> None:
+        s_wr = settings_mod.Settings()
+        from app.storage.signal_log import SignalLog
+
+        sl = SignalLog(settings=s_wr)
+        # Seed 5 signals: 3 strong_long (2w/1l), 2 strong_short (1w/1be)
+        rows = [
+            ("strong_long",  "win",       50.0),
+            ("strong_long",  "win",       30.0),
+            ("strong_long",  "loss",     -20.0),
+            ("strong_short", "win",       40.0),
+            ("strong_short", "breakeven", 0.0),
+        ]
+        for sig, outcome, pnl in rows:
+            decision = _LLMDecision(
+                action="execute", confidence=0.75,
+                reasoning=f"{sig} r", risk_notes="",
+            )
+            alert_wr = TradingViewAlert(
+                secret="x", symbol="XAUUSD", timeframe="60",
+                signal=sig, price=2345.0,
+            )
+            sid = await sl.record(alert_wr, c, decision, notified=True)
+            ok = await sl.update_outcome(sid, outcome, pnl)
+            assert ok, f"update_outcome failed for {sid}"
+
+        wr = await sl.winrate_by_signal(since_hours=24)
+        assert wr["overall"]["closed"] == 5
+        assert wr["overall"]["wins"] == 3
+        assert wr["overall"]["losses"] == 1
+        assert wr["overall"]["breakevens"] == 1
+        assert abs(wr["overall"]["total_pnl"] - 100.0) < 1e-6
+        # overall win_rate = wins / (wins+losses) = 3/4 = 0.75
+        assert abs(wr["overall"]["win_rate"] - 0.75) < 1e-6
+
+        by_sig = {r["signal"]: r for r in wr["by_signal"]}
+        assert "strong_long" in by_sig and "strong_short" in by_sig
+        sl_row = by_sig["strong_long"]
+        assert sl_row["wins"] == 2 and sl_row["losses"] == 1
+        # 2/(2+1) ≈ 0.6667
+        assert abs(sl_row["win_rate"] - 2/3) < 1e-3
+        ss_row = by_sig["strong_short"]
+        # 1 win, 0 loss, 1 breakeven → win_rate = 1/(1+0) = 1.0 (BE excluded)
+        assert ss_row["wins"] == 1 and ss_row["losses"] == 0
+        assert ss_row["breakevens"] == 1
+        assert ss_row["win_rate"] == 1.0
+        print(
+            f"[ok]   winrate aggregation: overall {wr['overall']['wins']}W "
+            f"/ {wr['overall']['losses']}L (win_rate={wr['overall']['win_rate']}), "
+            f"by_signal={len(wr['by_signal'])} rows"
+        )
+
+        # Invalid outcome should raise ValueError
+        try:
+            await sl.update_outcome(1, "foo")  # type: ignore[arg-type]
+        except ValueError:
+            print("[ok]   update_outcome rejects invalid outcome")
+        else:
+            raise AssertionError("expected ValueError for invalid outcome")
+
+    asyncio.run(run_winrate())
+    os.unlink(tmp3.name)
 
     print("\nALL OFFLINE VALIDATIONS PASSED")
     return 0

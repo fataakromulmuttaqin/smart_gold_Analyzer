@@ -42,7 +42,28 @@
       <div class="stat-card">
         <div class="stat-label">Avg confidence</div>
         <div class="stat-value" id="stat-conf">–</div>
-        <div class="stat-sub"><span id="stat-notified">0</span> notified</div>
+        <div class="stat-sub"><span id="stat-notified">0</span> notified · <span id="stat-orders">0</span> orders</div>
+      </div>
+    </section>
+
+    <!-- ═══ Win rate by signal ═══ -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Win rate by signal</h2>
+        <div class="filters">
+          <label>Window
+            <select id="f-wr-hours">
+              <option value="168">7 d</option>
+              <option value="720" selected>30 d</option>
+              <option value="2160">90 d</option>
+              <option value="8760">1 y</option>
+            </select>
+          </label>
+          <span class="hint" id="wr-overall">–</span>
+        </div>
+      </div>
+      <div id="wr-body" class="wr-body">
+        <div class="empty muted" id="wr-empty">loading…</div>
       </div>
     </section>
 
@@ -88,10 +109,12 @@
               <th>Decision</th>
               <th>Conf.</th>
               <th>Notified</th>
+              <th>Order</th>
+              <th>Outcome</th>
             </tr>
           </thead>
           <tbody id="signals-body">
-            <tr><td colspan="9" class="empty">loading…</td></tr>
+            <tr><td colspan="11" class="empty">loading…</td></tr>
           </tbody>
         </table>
       </div>
