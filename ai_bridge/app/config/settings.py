@@ -67,6 +67,30 @@ class Settings(BaseSettings):
     min_confidence: float = Field(default=0.60, alias="MIN_CONFIDENCE")
     signal_cooldown_seconds: int = Field(default=60, alias="SIGNAL_COOLDOWN_SECONDS")
 
+    # ── Safety guards ────────────────────────────────────────────────────
+    guard_weekend_enabled: bool = Field(default=True, alias="GUARD_WEEKEND_ENABLED")
+    guard_friday_cutoff_hour: int = Field(default=21, alias="GUARD_FRIDAY_CUTOFF_HOUR")
+    guard_consecutive_loss_enabled: bool = Field(
+        default=True, alias="GUARD_CONSECUTIVE_LOSS_ENABLED"
+    )
+    guard_max_consecutive_losses: int = Field(
+        default=3, alias="GUARD_MAX_CONSECUTIVE_LOSSES"
+    )
+    guard_loss_cooldown_minutes: int = Field(
+        default=60, alias="GUARD_LOSS_COOLDOWN_MINUTES"
+    )
+    guard_max_daily_trades_enabled: bool = Field(
+        default=True, alias="GUARD_MAX_DAILY_TRADES_ENABLED"
+    )
+    guard_max_daily_trades: int = Field(default=5, alias="GUARD_MAX_DAILY_TRADES")
+    guard_drawdown_enabled: bool = Field(default=True, alias="GUARD_DRAWDOWN_ENABLED")
+    guard_max_daily_loss_usd: float = Field(
+        default=500.0, alias="GUARD_MAX_DAILY_LOSS_USD"
+    )
+    guard_news_blackout_enabled: bool = Field(
+        default=True, alias="GUARD_NEWS_BLACKOUT_ENABLED"
+    )
+
     # ── MT5 broker execution (optional) ──────────────────────────────────
     # Opt-in: when MT5_ENABLED=false (default) the bridge uses NoopExecutor.
     # MT5 only works on Windows / Wine; on Linux the import will fail and
