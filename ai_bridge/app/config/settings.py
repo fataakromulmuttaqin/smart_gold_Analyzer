@@ -97,6 +97,14 @@ class Settings(BaseSettings):
         default=0.1, alias="SL_BREAKEVEN_BUFFER_ATR_MULT"
     )
 
+    # ── Trade plan defaults ─────────────────────────────────────────────
+    # RR used when the LLM decision does not provide a suggested_rr.
+    sl_default_rr: float = Field(default=2.0, alias="SL_DEFAULT_RR")
+    # Hypothetical equity used to produce a sizing *estimate* in the plan.
+    # This is display-only when MT5 is off (signal-only mode). When MT5 is
+    # live the actual equity from account_info() overrides this.
+    plan_equity_hint: float = Field(default=10000.0, alias="PLAN_EQUITY_HINT")
+
     # ── Risk sizing ─────────────────────────────────────────────────────
     risk_per_trade_pct: float = Field(default=1.0, alias="RISK_PER_TRADE_PCT")
     risk_per_trade_pct_reduce: float = Field(

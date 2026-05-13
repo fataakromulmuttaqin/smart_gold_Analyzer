@@ -20,6 +20,7 @@ from app.risk.stop_calculator import (
     StopResult,
     build_default_stop_calculator,
 )
+from app.risk.trade_plan import TradePlan, build_plan, compute_outcome_pnl
 
 __all__ = [
     "ATRStop",
@@ -28,4 +29,7 @@ __all__ = [
     "StopCalculator",
     "StopResult",
     "build_default_stop_calculator",
+    "TradePlan",
+    "build_plan",
+    "compute_outcome_pnl",
 ]

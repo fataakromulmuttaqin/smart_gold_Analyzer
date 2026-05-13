@@ -40,7 +40,19 @@ CREATE TABLE IF NOT EXISTS signals (
     -- v2: outcome tracking (filled later by a reconciler / manual update)
     outcome         TEXT,         -- 'win' | 'loss' | 'breakeven' | NULL
     pnl             REAL,         -- account-currency PnL, nullable
-    closed_at       TEXT          -- ISO timestamp when outcome was set
+    closed_at       TEXT,         -- ISO timestamp when outcome was set
+    -- v3: trade plan (planned entry/SL/TP — always built, even for skips)
+    plan_json       TEXT,
+    plan_side       TEXT,         -- 'long' | 'short'
+    plan_entry      REAL,
+    plan_sl         REAL,
+    plan_tp         REAL,
+    plan_rr         REAL,
+    plan_risk_usd   REAL,
+    plan_lot        REAL,
+    -- v3: outcome detail
+    exit_price      REAL,
+    pnl_r           REAL          -- PnL expressed as R-multiple of original stop
 );
 CREATE INDEX IF NOT EXISTS idx_signals_symbol_time
     ON signals(symbol, received_at DESC);
@@ -56,6 +68,16 @@ _MIGRATIONS = [
     "ALTER TABLE signals ADD COLUMN outcome TEXT",
     "ALTER TABLE signals ADD COLUMN pnl REAL",
     "ALTER TABLE signals ADD COLUMN closed_at TEXT",
+    "ALTER TABLE signals ADD COLUMN plan_json TEXT",
+    "ALTER TABLE signals ADD COLUMN plan_side TEXT",
+    "ALTER TABLE signals ADD COLUMN plan_entry REAL",
+    "ALTER TABLE signals ADD COLUMN plan_sl REAL",
+    "ALTER TABLE signals ADD COLUMN plan_tp REAL",
+    "ALTER TABLE signals ADD COLUMN plan_rr REAL",
+    "ALTER TABLE signals ADD COLUMN plan_risk_usd REAL",
+    "ALTER TABLE signals ADD COLUMN plan_lot REAL",
+    "ALTER TABLE signals ADD COLUMN exit_price REAL",
+    "ALTER TABLE signals ADD COLUMN pnl_r REAL",
 ]
 
 
@@ -106,6 +128,7 @@ class SignalLog:
         decision: LLMDecision,
         notified: bool,
         execution: Any | None,
+        plan: Any | None = None,
     ) -> int:
         exec_placed = 0
         exec_json: str | None = None
@@ -123,6 +146,29 @@ class SignalLog:
                 exec_placed = 0
                 exec_json = None
 
+        # Serialise trade plan (optional)
+        plan_json: str | None = None
+        plan_side: str | None = None
+        plan_entry: float | None = None
+        plan_sl: float | None = None
+        plan_tp: float | None = None
+        plan_rr: float | None = None
+        plan_risk_usd: float | None = None
+        plan_lot: float | None = None
+        if plan is not None:
+            try:
+                plan_dict = plan.to_dict() if hasattr(plan, "to_dict") else dict(plan)
+                plan_json = json.dumps(plan_dict, default=str)
+                plan_side = plan_dict.get("side")
+                plan_entry = plan_dict.get("entry_price")
+                plan_sl = plan_dict.get("stop_loss")
+                plan_tp = plan_dict.get("take_profit")
+                plan_rr = plan_dict.get("risk_reward")
+                plan_risk_usd = plan_dict.get("risk_usd_estimate")
+                plan_lot = plan_dict.get("lot_estimate")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not serialise trade plan: {}", exc)
+
         with self._connect() as conn:
             cur = conn.execute(
                 """
@@ -130,8 +176,10 @@ class SignalLog:
                     symbol, timeframe, signal, price,
                     alert_json, context_json,
                     decision_action, decision_conf, decision_json,
-                    notified, execution_placed, execution_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    notified, execution_placed, execution_json,
+                    plan_json, plan_side, plan_entry, plan_sl, plan_tp,
+                    plan_rr, plan_risk_usd, plan_lot
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert.symbol,
@@ -146,6 +194,14 @@ class SignalLog:
                     1 if notified else 0,
                     exec_placed,
                     exec_json,
+                    plan_json,
+                    plan_side,
+                    plan_entry,
+                    plan_sl,
+                    plan_tp,
+                    plan_rr,
+                    plan_risk_usd,
+                    plan_lot,
                 ),
             )
             return int(cur.lastrowid or 0)
@@ -157,36 +213,56 @@ class SignalLog:
         decision: LLMDecision,
         notified: bool = False,
         execution: Any | None = None,
+        plan: Any | None = None,
     ) -> int:
         await self.init_schema()
         return await asyncio.to_thread(
-            self._insert_blocking, alert, context, decision, notified, execution
+            self._insert_blocking,
+            alert, context, decision, notified, execution, plan,
         )
 
     def _update_outcome_blocking(
-        self, signal_id: int, outcome: str, pnl: float | None
+        self,
+        signal_id: int,
+        outcome: str,
+        pnl: float | None,
+        exit_price: float | None,
+        pnl_r: float | None,
     ) -> bool:
         with self._connect() as conn:
             cur = conn.execute(
                 "UPDATE signals "
-                "SET outcome = ?, pnl = ?, closed_at = CURRENT_TIMESTAMP "
+                "SET outcome = ?, pnl = ?, exit_price = ?, pnl_r = ?, "
+                "    closed_at = CURRENT_TIMESTAMP "
                 "WHERE id = ?",
-                (outcome, pnl, signal_id),
+                (outcome, pnl, exit_price, pnl_r, signal_id),
             )
             conn.commit()
             return cur.rowcount > 0
 
     async def update_outcome(
-        self, signal_id: int, outcome: str, pnl: float | None = None
+        self,
+        signal_id: int,
+        outcome: str,
+        pnl: float | None = None,
+        exit_price: float | None = None,
+        pnl_r: float | None = None,
     ) -> bool:
-        """Mark a signal as win/loss/breakeven after the trade closes."""
+        """Mark a signal as win/loss/breakeven after the trade closes.
+
+        If ``exit_price`` is given without ``pnl``/``pnl_r``, the caller is
+        expected to have pre-computed them from the stored plan (the API
+        endpoint does this automatically so the UI only needs to send
+        ``exit_price``).
+        """
         if outcome not in {"win", "loss", "breakeven"}:
             raise ValueError(
                 "outcome must be one of: 'win', 'loss', 'breakeven'"
             )
         await self.init_schema()
         return await asyncio.to_thread(
-            self._update_outcome_blocking, signal_id, outcome, pnl
+            self._update_outcome_blocking,
+            signal_id, outcome, pnl, exit_price, pnl_r,
         )
 
     # ══════════════════════════════════════════════════════════════════
@@ -203,7 +279,9 @@ class SignalLog:
         sql = (
             "SELECT id, received_at, symbol, timeframe, signal, price, "
             "       decision_action, decision_conf, notified, "
-            "       execution_placed, outcome, pnl "
+            "       execution_placed, outcome, pnl, pnl_r, "
+            "       plan_side, plan_entry, plan_sl, plan_tp, plan_rr, "
+            "       plan_risk_usd, plan_lot, exit_price "
             "FROM signals"
         )
         clauses: list[str] = []
@@ -249,7 +327,7 @@ class SignalLog:
             return None
         data = dict(row)
         # Expand JSON columns so the detail view doesn't have to parse twice.
-        for key in ("alert_json", "context_json", "decision_json", "execution_json"):
+        for key in ("alert_json", "context_json", "decision_json", "execution_json", "plan_json"):
             raw = data.get(key)
             if raw:
                 try:

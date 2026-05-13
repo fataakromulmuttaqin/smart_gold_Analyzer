@@ -12,6 +12,7 @@ from typing import Literal
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from app.risk.trade_plan import compute_outcome_pnl
 from app.storage.signal_log import SignalLog
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
@@ -85,19 +86,78 @@ class OutcomeUpdate(BaseModel):
     outcome: Literal["win", "loss", "breakeven"]
     pnl: float | None = Field(
         default=None,
-        description="Account-currency PnL (positive=profit). Optional.",
+        description=(
+            "Account-currency PnL (positive=profit). Optional — if omitted "
+            "and exit_price is provided, PnL is auto-computed from the "
+            "stored trade plan (entry, stop_distance, lot)."
+        ),
+    )
+    exit_price: float | None = Field(
+        default=None,
+        description=(
+            "Price at which the trade was closed. When provided, both "
+            "pnl_r and pnl (if lot known) are auto-computed. This is "
+            "the preferred way for the dashboard to record outcomes."
+        ),
     )
 
 
 @router.patch("/signals/{signal_id}/outcome")
 async def update_outcome(
     signal_id: int,
-    body: OutcomeUpdate = Body(...),  # noqa: B008 — FastAPI dependency-injection idiom
+    body: OutcomeUpdate = Body(...),  # noqa: B008 — FastAPI DI idiom
 ) -> dict:
-    """Record the real trade outcome for a signal (call after trade closes)."""
+    """Record the real trade outcome for a signal (call after trade closes).
+
+    If ``exit_price`` is provided, PnL is auto-derived from the stored
+    trade plan:
+
+      * ``pnl_r``  = (exit-entry) / stop_distance  (signed by side)
+      * ``pnl``    = pnl_points × 100 × lot        (XAUUSD standard)
+
+    If only ``outcome`` + ``pnl`` are sent, we store what we got.
+    """
+    existing = await _signal_log.get_by_id(signal_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Signal id={signal_id} not found",
+        )
+
+    pnl = body.pnl
+    pnl_r: float | None = None
+    exit_price = body.exit_price
+
+    # Auto-compute from stored plan when exit_price is provided
+    if exit_price is not None:
+        plan = existing.get("plan") or {}
+        side = plan.get("side") or existing.get("plan_side")
+        entry = plan.get("entry_price") or existing.get("plan_entry")
+        stop_distance = plan.get("stop_distance")
+        lot = plan.get("lot_estimate") or existing.get("plan_lot")
+        if side and entry is not None and stop_distance:
+            try:
+                pnl_r_auto, pnl_usd_auto = compute_outcome_pnl(
+                    side=side,
+                    entry_price=float(entry),
+                    exit_price=float(exit_price),
+                    stop_distance=float(stop_distance),
+                    lot=float(lot) if lot else None,
+                )
+                pnl_r = pnl_r_auto
+                if pnl is None and pnl_usd_auto is not None:
+                    pnl = pnl_usd_auto
+            except (TypeError, ValueError):
+                # Fall through — the user-provided values (if any) will be stored
+                pass
+
     try:
         ok = await _signal_log.update_outcome(
-            signal_id, outcome=body.outcome, pnl=body.pnl
+            signal_id,
+            outcome=body.outcome,
+            pnl=pnl,
+            exit_price=exit_price,
+            pnl_r=pnl_r,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -108,4 +168,11 @@ async def update_outcome(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Signal id={signal_id} not found",
         )
-    return {"updated": True, "id": signal_id, "outcome": body.outcome, "pnl": body.pnl}
+    return {
+        "updated": True,
+        "id": signal_id,
+        "outcome": body.outcome,
+        "exit_price": exit_price,
+        "pnl": pnl,
+        "pnl_r": pnl_r,
+    }

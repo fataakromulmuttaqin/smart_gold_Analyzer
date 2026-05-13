@@ -22,6 +22,7 @@ from app.executor.factory import build_executor
 from app.guards.chain import Verdict, build_default_chain
 from app.models.schemas import BridgeResponse, TradingViewAlert
 from app.notifier.telegram import TelegramNotifier
+from app.risk import build_plan
 from app.storage.signal_log import SignalLog
 from app.utils.logging import logger
 
@@ -122,6 +123,21 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
     # ── LLM decision ───────────────────────────────────────────────────
     decision = await evaluate_signal(alert, context, settings=settings)
 
+    # ── Trade plan (entry/SL/TP/sizing — always built, even for skips) ─
+    # This is what shows up in the dashboard so the user can see what the
+    # trade would have looked like, whether or not it was actually placed.
+    try:
+        plan = build_plan(
+            alert,
+            decision,
+            settings=settings,
+            equity_hint=settings.plan_equity_hint,
+            default_rr=settings.sl_default_rr,
+        )
+    except Exception as exc:  # noqa: BLE001 — plan builder is infallible
+        logger.warning("Trade plan builder failed: {}", exc)
+        plan = None
+
     # ── Safety guards ──────────────────────────────────────────────────
     guard_chain = build_default_chain(settings)
     guard_context = {
@@ -173,7 +189,8 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
     # Log every signal (even skips) for audit
     try:
         signal_id = await _signal_log.record(
-            alert, context, decision, notified=notified, execution=execution
+            alert, context, decision,
+            notified=notified, execution=execution, plan=plan,
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to write signal log: {}", exc)
