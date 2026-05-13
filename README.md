@@ -10,7 +10,8 @@ TradingView (Pine v6)  ──▶  Your VPS (FastAPI)  ──▶  MiniMax LLM
                                      │
                                      ├──▶  Safety Guards
                                      ├──▶  Telegram (decision + context)
-                                     ├──▶  MT5 Broker (optional)
+                                     ├──▶  cTrader Broker (IC Markets) ← RECOMMENDED
+                                     ├──▶  MT5 Broker (legacy, Windows only)
                                      ├──▶  Web Dashboard (/ui)
                                      └──▶  SQLite (audit log)
 ```
@@ -103,7 +104,9 @@ For each incoming signal, the FastAPI server runs:
      └──────────────┬──────────────────┘
                     ▼
   7. ┌─────────────────────────────────┐
-     │ Broker execute (MT5, optional)   │  Skipped on Linux w/o Wine
+     │ Broker execute                   │  cTrader (Linux headless) ← NEW
+     │ • cTrader Open API (recommended) │  Pure Python + asyncio WebSocket
+     │ • MT5 (legacy, Windows only)     │  Skipped on Linux w/o Wine
      └──────────────┬──────────────────┘
                     ▼
   8. ┌─────────────────────────────────┐
@@ -113,7 +116,7 @@ For each incoming signal, the FastAPI server runs:
   Background (every 10s):
      ┌─────────────────────────────────┐
      │ Breakeven reconciler             │  Shift SL to entry + 0.1×ATR
-     │ (MT5 only)                       │  once a position is +1R in profit
+     │ (cTrader / MT5)                  │  once a position is +1R in profit
      └─────────────────────────────────┘
 ```
 
@@ -157,9 +160,52 @@ When LLM returns `action=reduce`, risk drops to `RISK_PER_TRADE_PCT_REDUCE` (def
 
 ### 6. Breakeven management
 
-Once a position is +1R in profit, a background task (every 10s) shifts SL to `entry ± 0.1×ATR` via MT5 modify. This converts potential losers into scratch trades and typically adds +10-20% to Sharpe on XAUUSD H1.
+Once a position is +1R in profit, a background task (every 10s) shifts SL to `entry ± 0.1×ATR` via the broker API (cTrader or MT5). This converts potential losers into scratch trades and typically adds +10-20% to Sharpe on XAUUSD H1.
 
 Configurable: `SL_BREAKEVEN_ENABLED`, `SL_BREAKEVEN_TRIGGER_R`, `SL_BREAKEVEN_BUFFER_ATR_MULT`.
+
+### 7. Broker execution — cTrader Open API (RECOMMENDED)
+
+The bridge now supports **headless auto-execution on Linux** via the cTrader Open API (JSON over WebSocket). No Wine, no MetaTrader terminal, no GUI required.
+
+**Supported brokers**: IC Markets, Pepperstone, FxPro, RoboForex, and any cTrader broker.
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Linux VPS (headless)                                │
+│                                                      │
+│  SmartGold Bridge (FastAPI)                          │
+│  └─ CTraderExecutor                                 │
+│       └─ WebSocket (JSON) ──► cTrader backend       │
+│                                    └─► IC Markets   │
+└─────────────────────────────────────────────────────┘
+```
+
+**Setup**:
+1. Open a cTrader account with [IC Markets](https://www.icmarkets.com) (Raw Spread recommended)
+2. Register an app at https://openapi.ctrader.com/
+3. Link your trading account via OAuth2
+4. Set in `.env`:
+   ```env
+   CTRADER_ENABLED=true
+   CTRADER_CLIENT_ID=<your app client id>
+   CTRADER_CLIENT_SECRET=<your app secret>
+   CTRADER_ACCESS_TOKEN=<oauth2 token>
+   CTRADER_ACCOUNT_ID=<ctidTraderAccountId>
+   CTRADER_SYMBOL=XAUUSD
+   CTRADER_DEMO_MODE=true   # false for live trading
+   ```
+5. Install dependency: `pip install websockets`
+6. Restart bridge — `/health` shows `"executor": "ctrader"`
+
+**Executor priority**: `cTrader` > `MT5` > `Noop` (controlled by env vars).
+
+**Features**:
+- Lazy connection (connects on first signal, doesn't block startup)
+- Risk-based position sizing (same formula as MT5)
+- Hybrid PSAR stop-loss policy
+- Automatic breakeven shift on open positions
+- Graceful error handling (signal still logged + Telegram sent if order fails)
 
 ---
 
@@ -175,7 +221,7 @@ Configurable: `SL_BREAKEVEN_ENABLED`, `SL_BREAKEVEN_TRIGGER_R`, `SL_BREAKEVEN_BU
 | `ai_bridge/app/guards/` | **Safety guards** (daily trade cap, drawdown, spread, ATR, news) |
 | `ai_bridge/app/backtest/` | Backtest harness with multiple engines |
 | `ai_bridge/app/engine/` | LLM decision engine + prompts |
-| `ai_bridge/app/executor/` | MT5 executor + NoopExecutor |
+| `ai_bridge/app/executor/` | cTrader executor (recommended) + MT5 executor + NoopExecutor |
 | `ai_bridge/docker/` | Dockerfile, compose, Caddyfile, systemd unit |
 | `ai_bridge/scripts/backtest.py` | CLI backtest runner |
 | `ai_bridge/scripts/smoke_test.py` | Offline smoke test (no server needed) |

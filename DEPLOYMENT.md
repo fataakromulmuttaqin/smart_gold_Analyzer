@@ -294,33 +294,77 @@ testing the plumbing end-to-end without burning tokens.
 
 ---
 
-## 13. Optional: enable MT5 auto-execution
+## 13. Broker auto-execution
 
-The bridge ships a **NoopExecutor** by default — no orders are ever sent
-to a broker. To enable real execution via MetaTrader 5:
+### Option A: cTrader Open API (RECOMMENDED — Linux headless)
 
-1. **Platform**: MT5 Python SDK only runs on **Windows (or Linux+Wine)**.
-   If you're on a plain Linux VPS, the import fails silently and the
-   bridge keeps using NoopExecutor — the rest of the pipeline continues
-   to work (LLM decisions, Telegram alerts, dashboard).
-2. On a Windows VPS, install MT5 + the Python package inside the bridge
-   environment:
-   ```powershell
-   pip install MetaTrader5
-   ```
-3. Edit `.env`:
+The bridge ships a **CTraderExecutor** that connects to IC Markets (or any
+cTrader broker) via JSON WebSocket. No Wine, no GUI, no MetaTrader terminal.
+
+1. Open a **cTrader** account with [IC Markets](https://www.icmarkets.com)
+   (or Pepperstone, FxPro, etc.)
+2. Register an application at https://openapi.ctrader.com/
+3. Link your trading account via OAuth2 flow → obtain access token
+4. Find your `ctidTraderAccountId` in cTrader → Settings
+5. Edit `.env`:
    ```env
-   MT5_ENABLED=true
-   MT5_LOGIN=12345678
-   MT5_PASSWORD=your_trading_password
-   MT5_SERVER=Exness-MT5Trial8
-   MT5_SYMBOL=XAUUSD            # as your broker names it
-   MT5_RISK_PCT=1.0             # % of equity per trade
-   MT5_FIXED_LOT=0.0            # set >0 to bypass risk-based sizing
-   MT5_FALLBACK_STOP_POINTS=2000
+   CTRADER_ENABLED=true
+   CTRADER_CLIENT_ID=your_app_client_id
+   CTRADER_CLIENT_SECRET=your_app_secret
+   CTRADER_ACCESS_TOKEN=your_oauth2_token
+   CTRADER_ACCOUNT_ID=12345678
+   CTRADER_SYMBOL=XAUUSD
+   CTRADER_DEMO_MODE=true       # false for live
+   CTRADER_FIXED_LOT=0.0        # 0 = risk-based sizing (recommended)
+   CTRADER_LABEL=SmartGold
+
+   # Disable MT5 (not needed)
+   MT5_ENABLED=false
    ```
-4. Restart: `docker compose up -d` (or systemd restart).
-5. `/health` should now show `"executor":"mt5"` instead of `"noop"`.
+6. Install dependency and restart:
+   ```bash
+   pip install websockets==13.1
+   sudo docker compose -f docker/docker-compose.yml up -d --build
+   ```
+7. Check: `curl /health` should show `"executor": "ctrader"`.
+
+**How it works**: The executor connects lazily on the first signal. It
+authenticates (app + account), resolves the symbol name to an ID, then
+places market orders with SL/TP computed by the same hybrid stop policy
+used in backtesting. A background reconciler shifts SL to breakeven once
+positions move +1R in profit.
+
+**Executor priority**: `cTrader` (if `CTRADER_ENABLED=true`) > `MT5`
+(if `MT5_ENABLED=true`) > `Noop` (default, signal-only mode).
+
+### Option B: MetaTrader 5 (legacy — Windows/Wine only)
+
+The bridge also ships an **MT5Executor** for backwards compatibility.
+MT5 Python SDK only runs on **Windows (or Linux+Wine)**.
+If you're on a plain Linux VPS, the import fails silently and the
+bridge keeps using NoopExecutor — the rest of the pipeline continues
+to work (LLM decisions, Telegram alerts, dashboard).
+
+On a Windows VPS, install MT5 + the Python package inside the bridge
+environment:
+```powershell
+pip install MetaTrader5
+```
+
+Edit `.env`:
+```env
+MT5_ENABLED=true
+MT5_LOGIN=12345678
+MT5_PASSWORD=your_trading_password
+MT5_SERVER=Exness-MT5Trial8
+MT5_SYMBOL=XAUUSD
+MT5_RISK_PCT=1.0
+MT5_FIXED_LOT=0.0
+MT5_FALLBACK_STOP_POINTS=2000
+```
+
+Restart: `docker compose up -d` (or systemd restart).
+`/health` should now show `"executor":"mt5"` instead of `"noop"`.
 
 Stop distance uses `decision.suggested_stop_atr_mult × alert.atr` (both
 set by the LLM / Pine script). Take-profit uses `decision.suggested_rr`.
