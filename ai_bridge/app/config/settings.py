@@ -111,7 +111,21 @@ class Settings(BaseSettings):
         default=0.5, alias="RISK_PER_TRADE_PCT_REDUCE"
     )
 
-    # ── MT5 broker execution (optional) ──────────────────────────────────
+    # ── cTrader Open API execution (RECOMMENDED for Linux) ──────────────
+    # Pure Python + asyncio WebSocket. No Wine, no GUI. Works headless.
+    # Get credentials from https://openapi.ctrader.com/ after linking your
+    # IC Markets cTrader account.
+    ctrader_enabled: bool = Field(default=False, alias="CTRADER_ENABLED")
+    ctrader_client_id: str = Field(default="", alias="CTRADER_CLIENT_ID")
+    ctrader_client_secret: str = Field(default="", alias="CTRADER_CLIENT_SECRET")
+    ctrader_access_token: str = Field(default="", alias="CTRADER_ACCESS_TOKEN")
+    ctrader_account_id: str = Field(default="", alias="CTRADER_ACCOUNT_ID")
+    ctrader_symbol: str = Field(default="XAUUSD", alias="CTRADER_SYMBOL")
+    ctrader_demo_mode: bool = Field(default=True, alias="CTRADER_DEMO_MODE")
+    ctrader_fixed_lot: float = Field(default=0.0, alias="CTRADER_FIXED_LOT")
+    ctrader_label: str = Field(default="SmartGold", alias="CTRADER_LABEL")
+
+    # ── MT5 broker execution (legacy, Windows only) ──────────────────────
     # Opt-in: when MT5_ENABLED=false (default) the bridge uses NoopExecutor.
     # MT5 only works on Windows / Wine; on Linux the import will fail and
     # we fall back to NoopExecutor automatically.
@@ -154,6 +168,17 @@ class Settings(BaseSettings):
     @property
     def newsapi_is_configured(self) -> bool:
         return bool(self.newsapi_key)
+
+    @property
+    def ctrader_is_configured(self) -> bool:
+        """True if cTrader is enabled and essential credentials present."""
+        return (
+            self.ctrader_enabled
+            and bool(self.ctrader_client_id)
+            and bool(self.ctrader_client_secret)
+            and bool(self.ctrader_access_token)
+            and bool(self.ctrader_account_id)
+        )
 
     @property
     def mt5_is_configured(self) -> bool:

@@ -5,6 +5,9 @@ uvicorn[standard]==0.32.1
 # ── HTTP client (async, for MiniMax & NewsAPI) ─────────────────
 httpx==0.27.2
 
+# ── WebSocket client (cTrader Open API) ────────────────────────
+websockets==13.1
+
 # ── Settings / env ─────────────────────────────────────────────
 pydantic==2.9.2
 pydantic-settings==2.6.1
