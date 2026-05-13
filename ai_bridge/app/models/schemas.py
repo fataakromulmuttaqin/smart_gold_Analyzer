@@ -20,7 +20,7 @@ class TradingViewAlert(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     secret: str = Field(..., description="Shared WEBHOOK_SECRET for auth")
-    symbol: str = Field(..., description="e.g. OANDA:XAUUSD")
+    symbol: str = Field(..., description="e.g. XAUUSD, XAUUSDm (broker ticker)")
     timeframe: str = Field(..., description="e.g. 15, 60, 240, D")
     signal: Literal[
         # ── Current strategy (PSAR + EMA + Volume) ─────────────────
