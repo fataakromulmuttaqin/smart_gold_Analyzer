@@ -23,10 +23,14 @@ class TradingViewAlert(BaseModel):
     symbol: str = Field(..., description="e.g. OANDA:XAUUSD")
     timeframe: str = Field(..., description="e.g. 15, 60, 240, D")
     signal: Literal[
+        # ── Current strategy (PSAR + EMA + Volume) ─────────────────
         "long",
         "short",
         "strong_long",
         "strong_short",
+        "exit_long",
+        "exit_short",
+        # ── Legacy v1 (SMC — still accepted for backward compat) ───
         "bull_choch",
         "bear_choch",
         "bull_bos",
@@ -37,14 +41,44 @@ class TradingViewAlert(BaseModel):
     price: float = Field(..., description="Close price at signal bar")
     time: str | None = Field(default=None, description="Bar time (ISO or TV format)")
 
-    # Optional indicator context (filled if available from Pine script)
+    # ── PSAR + EMA + Volume strategy fields (v2+) ───────────────────────
+    # EMA Ribbon (20 / 50 / 100 / 200)
+    ema_fast: float | None = Field(default=None, description="EMA 20")
+    ema_mid: float | None = Field(default=None, description="EMA 50")
+    ema_slow: float | None = Field(default=None, description="EMA 100")
+    ema_base: float | None = Field(default=None, description="EMA 200 trend filter")
+
+    # Parabolic SAR
+    psar: float | None = Field(default=None, description="Current SAR value")
+    psar_below: bool | None = Field(
+        default=None, description="True = bullish (SAR below price)"
+    )
+
+    # Volume
+    volume: float | None = Field(default=None, description="Raw volume at signal bar")
+    volume_sma: float | None = Field(default=None, description="SMA(volume, 20)")
+    volume_ratio: float | None = Field(
+        default=None, description="volume / volume_sma (>1 = above avg)"
+    )
+
+    # Trend state
+    bull_trend: bool | None = Field(default=None, description="Full bull alignment")
+    bear_trend: bool | None = Field(default=None, description="Full bear alignment")
+
+    # Risk / position
+    atr: float | None = Field(default=None, description="ATR(14)")
+    bars_since_entry: int | None = Field(
+        default=None, description="0 for entries; N for exits"
+    )
+    exit_reason: str | None = Field(
+        default=None,
+        description='One of: "", psar_flip, trend_break, time_max, volume_fade',
+    )
+
+    # ── Legacy v1 (SMC) fields — kept for backward compatibility ────────
     ms_state: str | None = None
     rsi: float | None = None
-    atr: float | None = None
     money_flow: float | None = None
-    ema_fast: float | None = None
-    ema_slow: float | None = None
-    ema_base: float | None = None
 
 
 # ══════════════════════════════════════════════════════════════════════════
