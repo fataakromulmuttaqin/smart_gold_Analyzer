@@ -546,26 +546,34 @@ ai_send_structure = input.bool(false, "Also send BOS/CHoCH events",    group=grp
 // Runtime values are formatted with fixed precision so the Python server
 // can parse them cleanly with json.loads().
 //
-// Note on Pine v6 line continuation: we use a TRAILING '+' at the end of
-// every continued line and keep ALL body lines at the same indent depth.
-// Mixing indent depths inside a multi-line expression (e.g. the opening
-// '{' at 4 spaces and the closing '}' at a different depth) trips the
-// parser with: "Syntax error at input 'end of line without line
-// continuation' (CE10156)".
+// Implementation note — why we build the string piece-wise instead of
+// using multi-line line-continuation:
+//
+// Pine Script v6's line-wrap rule says continuation lines must be indented
+// with a number of spaces that is NOT a multiple of 4 (multiples of 4 are
+// reserved for local-block indentation). Any multi-line '+' chain inside
+// a function body that uses 4-space or 8-space indent gets parsed as
+// separate statements, and a trailing '+' on the last one dangles —
+// producing "Syntax error at input 'end of line without line continuation'
+// (CE10156)".
+//
+// Assembling the JSON through sequential single-line assignments avoids
+// the whole line-continuation gauntlet: each line is a complete statement.
 f_ai_payload(string sig_name) =>
-    '{"secret":"'    + ai_webhook_secret                              + '",' +
-    '"symbol":"'     + syminfo.ticker                                 + '",' +
-    '"timeframe":"'  + timeframe.period                               + '",' +
-    '"signal":"'     + sig_name                                       + '",' +
-    '"price":'       + str.tostring(close,      "#.####")             + ','  +
-    '"time":"'       + str.format_time(time, "yyyy-MM-dd'T'HH:mm:ssZ", "UTC") + '",' +
-    '"ms_state":"'   + ms_state                                       + '",' +
-    '"rsi":'         + str.tostring(rsi_val,    "#.##")               + ','  +
-    '"atr":'         + str.tostring(atr_val,    "#.####")             + ','  +
-    '"money_flow":'  + str.tostring(money_flow, "#.##")               + ','  +
-    '"ema_fast":'    + str.tostring(ema_fast,   "#.####")             + ','  +
-    '"ema_slow":'    + str.tostring(ema_slow,   "#.####")             + ','  +
-    '"ema_base":'    + str.tostring(ema_base,   "#.####")             + '}'
+    p1  = '{"secret":"'    + ai_webhook_secret + '",'
+    p2  = '"symbol":"'     + syminfo.ticker    + '",'
+    p3  = '"timeframe":"'  + timeframe.period  + '",'
+    p4  = '"signal":"'     + sig_name          + '",'
+    p5  = '"price":'       + str.tostring(close,      "#.####") + ','
+    p6  = '"time":"'       + str.format_time(time, "yyyy-MM-dd'T'HH:mm:ssZ", "UTC") + '",'
+    p7  = '"ms_state":"'   + ms_state          + '",'
+    p8  = '"rsi":'         + str.tostring(rsi_val,    "#.##")   + ','
+    p9  = '"atr":'         + str.tostring(atr_val,    "#.####") + ','
+    p10 = '"money_flow":'  + str.tostring(money_flow, "#.##")   + ','
+    p11 = '"ema_fast":'    + str.tostring(ema_fast,   "#.####") + ','
+    p12 = '"ema_slow":'    + str.tostring(ema_slow,   "#.####") + ','
+    p13 = '"ema_base":'    + str.tostring(ema_base,   "#.####") + '}'
+    p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9 + p10 + p11 + p12 + p13
 
 // Dispatch: each signal fires its own alert() with a tailored payload.
 // alert.freq_once_per_bar_close = exactly one fire per confirmed bar.
