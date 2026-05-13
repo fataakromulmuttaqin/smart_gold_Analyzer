@@ -14,6 +14,7 @@ a verdict instantly.
 from app.guards.chain import GuardChain, GuardVerdict  # noqa: F401
 from app.guards.guards import (  # noqa: F401
     DrawdownGuard,
+    MaxATRGuard,
     MaxDailyTradesGuard,
     NewsBlackoutGuard,
     SpreadGuard,
@@ -23,6 +24,7 @@ __all__ = [
     "GuardChain",
     "GuardVerdict",
     "DrawdownGuard",
+    "MaxATRGuard",
     "MaxDailyTradesGuard",
     "NewsBlackoutGuard",
     "SpreadGuard",

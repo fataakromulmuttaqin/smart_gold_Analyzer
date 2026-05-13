@@ -8,21 +8,15 @@ it will fail to import. We handle that by:
   * returning an ExecutionResult with ``placed=False, error=...`` instead
     of raising.
 
-Order sizing uses the decision's ``suggested_stop_atr_mult`` and
-``suggested_rr`` together with the alert's ATR. If ATR is missing we
-fall back to a fixed-pip stop (configurable via env).
+Order sizing uses the centralised ``app.risk`` module:
+  * ``StopCalculator`` selects SL distance (default: hybrid ATR-bounded PSAR)
+  * ``position_sizer.compute_lot`` translates risk_pct + SL → lot size
 
-ENV:
-    MT5_ENABLED=true|false   (master switch; default false)
-    MT5_LOGIN=<int>          (broker account login)
-    MT5_PASSWORD=<str>
-    MT5_SERVER=<str>         (e.g. "Exness-MT5Trial8")
-    MT5_SYMBOL=<str>         (default: "XAUUSD" — override per broker)
-    MT5_RISK_PCT=1.0         (percent of equity to risk per trade)
-    MT5_FIXED_LOT=0.0        (if >0, override sizing with this lot)
-    MT5_DEVIATION=20         (max slippage, points)
-    MT5_MAGIC=260512         (order magic number for later identification)
-    MT5_FALLBACK_STOP_POINTS=2000   (if ATR missing; gold 1pt ≈ $0.01)
+ENV knobs (see .env.example for full list):
+    MT5_ENABLED / MT5_LOGIN / MT5_PASSWORD / MT5_SERVER / MT5_SYMBOL
+    MT5_FIXED_LOT / MT5_DEVIATION / MT5_MAGIC / MT5_FALLBACK_STOP_POINTS
+    SL_POLICY / SL_MIN_ATR_MULT / SL_MAX_ATR_MULT / SL_ATR_MULT
+    RISK_PER_TRADE_PCT / RISK_PER_TRADE_PCT_REDUCE
 """
 from __future__ import annotations
 
@@ -31,6 +25,8 @@ from typing import Any
 from app.config.settings import Settings, get_settings
 from app.executor.base import ExecutionResult
 from app.models.schemas import LLMDecision, TradingViewAlert
+from app.risk import build_default_stop_calculator
+from app.risk.position_sizer import compute_lot
 from app.utils.logging import logger
 
 
@@ -44,6 +40,7 @@ class MT5Executor:
         self._mt5 = None
         self._initialised = False
         self._init_error: str | None = None
+        self._stop_calc = build_default_stop_calculator(self.settings)
 
     # ──────────────────────────────────────────────────────────────────
     # Lifecycle
@@ -92,11 +89,14 @@ class MT5Executor:
             logger.error(self._init_error)
             return False
 
-        logger.info("MT5 initialised (server={} login={})", s.mt5_server, s.mt5_login)
+        logger.info(
+            "MT5 initialised (server={} login={} sl_policy={})",
+            s.mt5_server, s.mt5_login, s.sl_policy,
+        )
         return True
 
     # ──────────────────────────────────────────────────────────────────
-    # Sizing / price helpers
+    # Symbol / tick helpers
     # ──────────────────────────────────────────────────────────────────
     def _symbol_info(self, symbol: str) -> Any | None:
         info = self._mt5.symbol_info(symbol)  # type: ignore[union-attr]
@@ -105,42 +105,6 @@ class MT5Executor:
             self._mt5.symbol_select(symbol, True)  # type: ignore[union-attr]
             info = self._mt5.symbol_info(symbol)  # type: ignore[union-attr]
         return info
-
-    def _compute_volume(
-        self,
-        *,
-        info: Any,
-        equity: float,
-        risk_pct: float,
-        stop_distance: float,
-    ) -> float:
-        """Return a broker-valid lot size that risks ≤ risk_pct of equity.
-
-        Clamped to [volume_min, volume_max] and rounded to volume_step.
-        """
-        # Fixed override wins
-        if self.settings.mt5_fixed_lot > 0:
-            return max(
-                info.volume_min,
-                min(self.settings.mt5_fixed_lot, info.volume_max),
-            )
-
-        if stop_distance <= 0:
-            return info.volume_min
-
-        # Risk in account currency
-        risk_amount = equity * (risk_pct / 100.0)
-        # Money per 1 lot for 1 price unit of movement.
-        # For XAUUSD: tick_value per tick_size. Approximate dollars-per-1.0-move.
-        tick_value = float(info.trade_tick_value) if info.trade_tick_value else 1.0
-        tick_size = float(info.trade_tick_size) if info.trade_tick_size else 0.01
-        dollars_per_unit = (tick_value / tick_size) if tick_size > 0 else 1.0
-
-        raw = risk_amount / (stop_distance * dollars_per_unit)
-        step = float(info.volume_step or 0.01)
-        if step > 0:
-            raw = (int(raw / step)) * step
-        return max(info.volume_min, min(raw, info.volume_max))
 
     # ──────────────────────────────────────────────────────────────────
     # Public: execute()
@@ -191,18 +155,21 @@ class MT5Executor:
 
         # Side inference from the Pine signal name
         side_is_long = "long" in alert.signal or "bull" in alert.signal
+        side = "long" if side_is_long else "short"
         price = tick.ask if side_is_long else tick.bid
         order_type = mt5.ORDER_TYPE_BUY if side_is_long else mt5.ORDER_TYPE_SELL
 
-        # Stop distance: prefer decision.suggested_stop_atr_mult × alert.atr.
-        # Fall back to env points if ATR missing.
-        stop_distance: float
-        if decision.suggested_stop_atr_mult and alert.atr:
-            stop_distance = float(decision.suggested_stop_atr_mult) * float(alert.atr)
-        elif alert.atr:
-            stop_distance = 1.5 * float(alert.atr)  # sensible default
-        else:
-            # Each "point" on XAUUSD ≈ 0.01 for most brokers.
+        # ── Stop distance via centralised calculator ──────────────────
+        stop_result = self._stop_calc.calculate(
+            side=side,
+            entry_price=float(price),
+            atr=float(alert.atr) if alert.atr else None,
+            psar=float(alert.psar) if alert.psar else None,
+        )
+        stop_distance = stop_result.distance
+
+        if stop_distance <= 0:
+            # Absolute fallback to env-configured fixed points
             stop_distance = s.mt5_fallback_stop_points * (info.point or 0.01)
 
         rr = float(decision.suggested_rr) if decision.suggested_rr else 2.0
@@ -214,19 +181,24 @@ class MT5Executor:
             sl = price + stop_distance
             tp = price - stop_distance * rr
 
-        # Risk-based sizing
-        risk_pct = s.mt5_risk_pct
-        if decision.action == "reduce":
-            risk_pct = risk_pct / 2.0  # halve size for reduce
+        # ── Risk-based sizing ────────────────────────────────────────
+        risk_pct = (
+            s.risk_per_trade_pct_reduce
+            if decision.action == "reduce"
+            else s.risk_per_trade_pct
+        )
 
         acct = mt5.account_info()  # type: ignore[union-attr]
         equity = float(acct.equity) if acct else 0.0
-        volume = self._compute_volume(
-            info=info,
+
+        sizing = compute_lot(
             equity=equity,
             risk_pct=risk_pct,
             stop_distance=stop_distance,
+            symbol_info=info,
+            fixed_lot=s.mt5_fixed_lot,
         )
+        volume = sizing.lot
 
         if volume <= 0:
             return ExecutionResult(
@@ -281,8 +253,129 @@ class MT5Executor:
                 "comment": getattr(result, "comment", ""),
                 "rr_used": rr,
                 "risk_pct_used": risk_pct,
+                "sl_policy": stop_result.source,
+                "sl_clipped": stop_result.was_clipped,
+                "sl_atr_mult_effective": round(stop_result.atr_mult_effective, 3),
+                "sizing_effective_risk_usd": round(sizing.effective_risk_usd, 2),
+                "sizing_reason": sizing.reason,
             },
         )
+
+    # ──────────────────────────────────────────────────────────────────
+    # Breakeven reconciler (called periodically by main.py background task)
+    # ──────────────────────────────────────────────────────────────────
+    async def reconcile_breakeven(self) -> int:
+        """Scan open positions and shift SL to breakeven if triggered.
+
+        Returns number of positions modified. Returns 0 if breakeven is
+        disabled, MT5 not ready, or no positions open.
+        """
+        import asyncio
+
+        if not self.settings.sl_breakeven_enabled:
+            return 0
+
+        return await asyncio.to_thread(self._reconcile_breakeven_blocking)
+
+    def _reconcile_breakeven_blocking(self) -> int:
+        if not self._lazy_init():
+            return 0
+
+        from app.risk.breakeven import (
+            check_breakeven_long,
+            check_breakeven_short,
+        )
+
+        mt5 = self._mt5
+        s = self.settings
+        positions = mt5.positions_get()  # type: ignore[union-attr]
+        if not positions:
+            return 0
+
+        modified = 0
+        for pos in positions:
+            # Only manage positions with our magic number
+            if int(getattr(pos, "magic", 0)) != int(s.mt5_magic):
+                continue
+
+            symbol = str(pos.symbol)
+            tick = mt5.symbol_info_tick(symbol)  # type: ignore[union-attr]
+            if tick is None:
+                continue
+
+            entry = float(pos.price_open)
+            current_sl = float(pos.sl) if pos.sl else 0.0
+            current = float(tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask)
+            # Infer original stop distance from current SL
+            if current_sl == 0:
+                continue  # No SL set — skip
+            stop_distance = abs(entry - current_sl)
+
+            # We don't have live ATR — re-derive from a recent rates query
+            rates = mt5.copy_rates_from_pos(  # type: ignore[union-attr]
+                symbol, mt5.TIMEFRAME_H1, 0, 20
+            )
+            if rates is None or len(rates) < 14:
+                continue
+
+            # Simple ATR(14)
+            import statistics
+            trs = []
+            for i in range(1, len(rates)):
+                hi = float(rates[i]["high"])
+                lo = float(rates[i]["low"])
+                pc = float(rates[i - 1]["close"])
+                trs.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
+            atr = statistics.mean(trs[-14:])
+
+            if pos.type == mt5.ORDER_TYPE_BUY:
+                result = check_breakeven_long(
+                    entry_price=entry,
+                    current_price=current,
+                    current_stop=current_sl,
+                    atr=atr,
+                    stop_distance=stop_distance,
+                    trigger_r=s.sl_breakeven_trigger_r,
+                    buffer_atr_mult=s.sl_breakeven_buffer_atr_mult,
+                )
+            else:
+                result = check_breakeven_short(
+                    entry_price=entry,
+                    current_price=current,
+                    current_stop=current_sl,
+                    atr=atr,
+                    stop_distance=stop_distance,
+                    trigger_r=s.sl_breakeven_trigger_r,
+                    buffer_atr_mult=s.sl_breakeven_buffer_atr_mult,
+                )
+
+            if not result.should_shift or result.new_stop is None:
+                continue
+
+            # Send modify request
+            modify_req = {
+                "action": mt5.TRADE_ACTION_SLTP,
+                "position": int(pos.ticket),
+                "symbol": symbol,
+                "sl": float(result.new_stop),
+                "tp": float(pos.tp) if pos.tp else 0.0,
+            }
+            try:
+                modify_res = mt5.order_send(modify_req)  # type: ignore[union-attr]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Breakeven modify raised for #{}: {}", pos.ticket, exc)
+                continue
+
+            if modify_res is None:
+                continue
+            if int(getattr(modify_res, "retcode", -1)) == mt5.TRADE_RETCODE_DONE:
+                logger.info(
+                    "Breakeven: shifted SL for #{} ({}) to {:.4f} — {}",
+                    pos.ticket, symbol, result.new_stop, result.reason,
+                )
+                modified += 1
+
+        return modified
 
 
 __all__ = ["MT5Executor"]

@@ -104,9 +104,37 @@ class NewsBlackoutGuard:
         return GuardVerdict(verdict=Verdict.PASS, guard_name=self.name)
 
 
+@dataclass(slots=True)
+class MaxATRGuard:
+    """Block trading when ATR indicates extreme volatility.
+
+    During flash-news events gold ATR can spike to >$12 on H1, producing
+    both huge stop distances and unreliable price action. Skipping these
+    windows preserves capital for saner conditions.
+    """
+
+    name: str = "max_atr"
+    max_atr: float = 12.0
+
+    def evaluate(self, context: dict[str, Any]) -> GuardVerdict:
+        alert = context.get("alert")
+        atr = getattr(alert, "atr", None) if alert else None
+        if atr is None or atr <= 0:
+            # No ATR to check — fail open
+            return GuardVerdict(verdict=Verdict.PASS, guard_name=self.name)
+        if atr > self.max_atr:
+            return GuardVerdict(
+                verdict=Verdict.BLOCK,
+                guard_name=self.name,
+                reason=f"ATR {atr:.2f} > max {self.max_atr:.2f} (extreme volatility)",
+            )
+        return GuardVerdict(verdict=Verdict.PASS, guard_name=self.name)
+
+
 __all__ = [
     "MaxDailyTradesGuard",
     "DrawdownGuard",
     "SpreadGuard",
     "NewsBlackoutGuard",
+    "MaxATRGuard",
 ]

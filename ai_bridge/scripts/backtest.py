@@ -114,6 +114,32 @@ def main() -> int:
         help="Exit mode: fixed_rr (ATR stop + RR TP) or indicator (EMA cross exit)",
     )
     parser.add_argument(
+        "--stop-policy",
+        default="atr",
+        choices=["atr", "psar", "hybrid"],
+        help="SL policy: atr (fixed ATR mult), psar (pure PSAR), hybrid (PSAR bounded by ATR) [RECOMMENDED: hybrid for psar_ema_vol]",
+    )
+    parser.add_argument(
+        "--stop-min-atr-mult", type=float, default=0.8,
+        help="Minimum stop as ATR multiple (hybrid policy only)",
+    )
+    parser.add_argument(
+        "--stop-max-atr-mult", type=float, default=2.5,
+        help="Maximum stop as ATR multiple (hybrid policy only)",
+    )
+    parser.add_argument(
+        "--breakeven", action="store_true",
+        help="Enable breakeven SL shift after +1R gain",
+    )
+    parser.add_argument(
+        "--breakeven-trigger-r", type=float, default=1.0,
+        help="R-multiple at which to shift SL to breakeven (default 1.0)",
+    )
+    parser.add_argument(
+        "--breakeven-buffer-atr-mult", type=float, default=0.1,
+        help="New SL offset from entry as ATR mult (default 0.1)",
+    )
+    parser.add_argument(
         "--variants",
         default="baseline,ema_stack,llm",
         help="Comma-separated variant names",
@@ -150,6 +176,12 @@ def main() -> int:
         engine_name=args.engine,
         exit_mode=args.exit_mode,
         stop_atr_mult=args.stop_atr_mult,
+        stop_policy=args.stop_policy,
+        stop_min_atr_mult=args.stop_min_atr_mult,
+        stop_max_atr_mult=args.stop_max_atr_mult,
+        breakeven_enabled=args.breakeven,
+        breakeven_trigger_r=args.breakeven_trigger_r,
+        breakeven_buffer_atr_mult=args.breakeven_buffer_atr_mult,
         rr=args.rr,
         max_bars=args.max_bars,
         settings=s,

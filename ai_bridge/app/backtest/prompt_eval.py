@@ -99,35 +99,31 @@ def run_backtest(
     rr: float = 2.0,
     max_bars: int = 48,
     exit_mode: str = "fixed_rr",
+    stop_policy: str = "atr",
+    stop_min_atr_mult: float = 0.8,
+    stop_max_atr_mult: float = 2.5,
+    breakeven_enabled: bool = False,
+    breakeven_trigger_r: float = 1.0,
+    breakeven_buffer_atr_mult: float = 0.1,
     settings: Settings | None = None,
 ) -> dict:
     """Run the full backtest across all variants and return a comparable result.
 
     Returns a dict:
         {
-            "input":   {symbol, timeframe, bars, signals},
-            "variants": {
-                name: {
-                    "trades":   int,
-                    "accepted": int,
-                    "rejected": int,
-                    "metrics":  summarise(...) output,
-                    "sample":   first 5 trades for sanity-check,
-                },
-                ...
-            },
+            "input":   {symbol, timeframe, bars, signals, policy knobs},
+            "variants": {name: {accepted, rejected, metrics, sample}, ...},
         }
     """
     s = settings or get_settings()
     engine_fn = get_engine(engine_name)
     signals = engine_fn(df, symbol=symbol, timeframe=timeframe)
     logger.info(
-        "Backtest: {} bars, {} raw signals, engine={}, exit_mode={}",
-        len(df), len(signals), engine_name, exit_mode,
+        "Backtest: {} bars, {} raw signals, engine={}, exit_mode={}, sl_policy={}",
+        len(df), len(signals), engine_name, exit_mode, stop_policy,
     )
 
     if variants is None:
-        # Default: baseline (accept everything) for a reference benchmark.
         variants = [baseline_accept_all()]
 
     out: dict = {
@@ -138,7 +134,13 @@ def run_backtest(
             "signals": int(len(signals)),
             "engine": engine_name,
             "exit_mode": exit_mode,
+            "stop_policy": stop_policy,
             "stop_atr_mult": stop_atr_mult,
+            "stop_min_atr_mult": stop_min_atr_mult,
+            "stop_max_atr_mult": stop_max_atr_mult,
+            "breakeven_enabled": breakeven_enabled,
+            "breakeven_trigger_r": breakeven_trigger_r,
+            "breakeven_buffer_atr_mult": breakeven_buffer_atr_mult,
             "rr": rr,
             "max_bars": max_bars,
         },
@@ -170,6 +172,12 @@ def run_backtest(
             rr=rr,
             max_bars=max_bars,
             exit_mode=exit_mode,
+            stop_policy=stop_policy,
+            stop_min_atr_mult=stop_min_atr_mult,
+            stop_max_atr_mult=stop_max_atr_mult,
+            breakeven_enabled=breakeven_enabled,
+            breakeven_trigger_r=breakeven_trigger_r,
+            breakeven_buffer_atr_mult=breakeven_buffer_atr_mult,
         )
         metrics = summarise(trades)
         out["variants"][variant.name] = {
@@ -183,15 +191,17 @@ def run_backtest(
                     "side": t.side,
                     "outcome": t.outcome,
                     "reason": t.reason,
-                    "pnl_r": t.pnl_r,
+                    "pnl_r": round(t.pnl_r, 3),
+                    "sl_source": t.sl_source,
+                    "breakeven_shifted": t.breakeven_shifted,
                 }
                 for t in trades[:5]
             ],
         }
         logger.info(
-            "Variant '{}': accepted={} rejected={} win_rate={} expectancy_r={}",
+            "Variant '{}': accepted={} rejected={} win_rate={} expectancy_r={} pf={}",
             variant.name, accepted, rejected,
-            metrics["win_rate"], metrics["expectancy_r"],
+            metrics["win_rate"], metrics["expectancy_r"], metrics["profit_factor"],
         )
 
     return out

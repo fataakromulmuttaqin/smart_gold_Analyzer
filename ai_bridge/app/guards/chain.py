@@ -110,6 +110,7 @@ def build_default_chain(settings: Any = None) -> GuardChain:
     """
     from app.guards.guards import (
         DrawdownGuard,
+        MaxATRGuard,
         MaxDailyTradesGuard,
         NewsBlackoutGuard,
         SpreadGuard,
@@ -124,6 +125,7 @@ def build_default_chain(settings: Any = None) -> GuardChain:
     chain.add(MaxDailyTradesGuard(max_trades=settings.guard_max_daily_trades))
     chain.add(DrawdownGuard(max_dd_r=settings.guard_max_daily_drawdown_r))
     chain.add(SpreadGuard(max_spread_points=settings.guard_max_spread_points))
+    chain.add(MaxATRGuard(max_atr=settings.guard_max_atr))
     chain.add(NewsBlackoutGuard(enabled=settings.guard_news_blackout))
 
     return chain

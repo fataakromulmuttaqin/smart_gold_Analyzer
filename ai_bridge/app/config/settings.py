@@ -76,6 +76,32 @@ class Settings(BaseSettings):
         default=50.0, alias="GUARD_MAX_SPREAD_POINTS"
     )
     guard_news_blackout: bool = Field(default=True, alias="GUARD_NEWS_BLACKOUT")
+    guard_max_atr: float = Field(default=12.0, alias="GUARD_MAX_ATR")
+
+    # ── Stop Loss policy ────────────────────────────────────────────────
+    # Policy options:
+    #   "hybrid" (default, RECOMMENDED) — PSAR with ATR bounds
+    #   "psar"   — pure PSAR distance (no ATR floor/cap)
+    #   "atr"    — classic fixed ATR multiple
+    sl_policy: str = Field(default="hybrid", alias="SL_POLICY")
+    sl_atr_mult: float = Field(default=1.5, alias="SL_ATR_MULT")
+    sl_min_atr_mult: float = Field(default=0.8, alias="SL_MIN_ATR_MULT")
+    sl_max_atr_mult: float = Field(default=2.5, alias="SL_MAX_ATR_MULT")
+
+    # ── Breakeven stop shift ────────────────────────────────────────────
+    sl_breakeven_enabled: bool = Field(default=True, alias="SL_BREAKEVEN_ENABLED")
+    sl_breakeven_trigger_r: float = Field(
+        default=1.0, alias="SL_BREAKEVEN_TRIGGER_R"
+    )
+    sl_breakeven_buffer_atr_mult: float = Field(
+        default=0.1, alias="SL_BREAKEVEN_BUFFER_ATR_MULT"
+    )
+
+    # ── Risk sizing ─────────────────────────────────────────────────────
+    risk_per_trade_pct: float = Field(default=1.0, alias="RISK_PER_TRADE_PCT")
+    risk_per_trade_pct_reduce: float = Field(
+        default=0.5, alias="RISK_PER_TRADE_PCT_REDUCE"
+    )
 
     # ── MT5 broker execution (optional) ──────────────────────────────────
     # Opt-in: when MT5_ENABLED=false (default) the bridge uses NoopExecutor.

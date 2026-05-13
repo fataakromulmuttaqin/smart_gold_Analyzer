@@ -314,16 +314,15 @@ def psar_ema_vol_engine(
     return rows
 
 
-# Register the new engine
-register_engine("psar_ema_vol", psar_ema_vol_engine)
-
-
 # ──────────────────────────────────────────────────────────────────────
 # Public engine registry
 # ──────────────────────────────────────────────────────────────────────
 EngineFn = Callable[..., list[SignalRow]]
 
-_ENGINES: dict[str, EngineFn] = {"smartgold": smartgold_engine}
+_ENGINES: dict[str, EngineFn] = {
+    "smartgold": smartgold_engine,
+    "psar_ema_vol": psar_ema_vol_engine,
+}
 
 
 def register_engine(name: str, fn: EngineFn) -> None:
