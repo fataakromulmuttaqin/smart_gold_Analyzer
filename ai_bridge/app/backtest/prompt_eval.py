@@ -98,6 +98,7 @@ def run_backtest(
     stop_atr_mult: float = 1.5,
     rr: float = 2.0,
     max_bars: int = 48,
+    exit_mode: str = "fixed_rr",
     settings: Settings | None = None,
 ) -> dict:
     """Run the full backtest across all variants and return a comparable result.
@@ -121,8 +122,8 @@ def run_backtest(
     engine_fn = get_engine(engine_name)
     signals = engine_fn(df, symbol=symbol, timeframe=timeframe)
     logger.info(
-        "Backtest: {} bars, {} raw signals, engine={}",
-        len(df), len(signals), engine_name,
+        "Backtest: {} bars, {} raw signals, engine={}, exit_mode={}",
+        len(df), len(signals), engine_name, exit_mode,
     )
 
     if variants is None:
@@ -136,6 +137,7 @@ def run_backtest(
             "bars": int(len(df)),
             "signals": int(len(signals)),
             "engine": engine_name,
+            "exit_mode": exit_mode,
             "stop_atr_mult": stop_atr_mult,
             "rr": rr,
             "max_bars": max_bars,
@@ -167,6 +169,7 @@ def run_backtest(
             stop_atr_mult=stop_atr_mult,
             rr=rr,
             max_bars=max_bars,
+            exit_mode=exit_mode,
         )
         metrics = summarise(trades)
         out["variants"][variant.name] = {

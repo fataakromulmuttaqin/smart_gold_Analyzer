@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     min_confidence: float = Field(default=0.60, alias="MIN_CONFIDENCE")
     signal_cooldown_seconds: int = Field(default=60, alias="SIGNAL_COOLDOWN_SECONDS")
 
+    # ── Safety guards ────────────────────────────────────────────────────
+    guard_max_daily_trades: int = Field(default=5, alias="GUARD_MAX_DAILY_TRADES")
+    guard_max_daily_drawdown_r: float = Field(
+        default=-3.0, alias="GUARD_MAX_DAILY_DRAWDOWN_R"
+    )
+    guard_max_spread_points: float = Field(
+        default=50.0, alias="GUARD_MAX_SPREAD_POINTS"
+    )
+    guard_news_blackout: bool = Field(default=True, alias="GUARD_NEWS_BLACKOUT")
+
     # ── MT5 broker execution (optional) ──────────────────────────────────
     # Opt-in: when MT5_ENABLED=false (default) the bridge uses NoopExecutor.
     # MT5 only works on Windows / Wine; on Linux the import will fail and

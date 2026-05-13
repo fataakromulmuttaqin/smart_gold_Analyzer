@@ -8,8 +8,12 @@ Usage:
     # Via yfinance (needs internet + yfinance installed):
     python scripts/backtest.py --yf GC=F --period 6mo --interval 1h --tf 60
 
+    # Use the PSAR+EMA+Vol engine with indicator-based exits:
+    python scripts/backtest.py --yf GC=F --period 6mo --interval 1h \
+        --engine psar_ema_vol --exit-mode indicator
+
     # Compare prompt variants with LLM in mock mode (free):
-    LLM_MOCK_MODE=true python scripts/backtest.py --yf GC=F --period 1y \\
+    LLM_MOCK_MODE=true python scripts/backtest.py --yf GC=F --period 1y \
         --interval 1h --variants baseline,ema_stack,llm
 
 The run prints a JSON report summarising each variant. Use
@@ -33,6 +37,7 @@ from app.backtest.prompt_eval import (  # noqa: E402
     run_backtest,
     simple_trend_filter,
 )
+from app.backtest.signals import get_engine  # noqa: E402
 from app.config.settings import get_settings  # noqa: E402
 from app.utils.logging import configure_logging, logger  # noqa: E402
 
@@ -98,6 +103,17 @@ def main() -> int:
     parser.add_argument("--symbol", default="XAUUSD", help="Symbol label for signals")
     parser.add_argument("--tf", default="60", help="Timeframe label (e.g. 60, 240, D)")
     parser.add_argument(
+        "--engine",
+        default="smartgold",
+        help="Signal engine: smartgold (default), psar_ema_vol",
+    )
+    parser.add_argument(
+        "--exit-mode",
+        default="fixed_rr",
+        choices=["fixed_rr", "indicator"],
+        help="Exit mode: fixed_rr (ATR stop + RR TP) or indicator (EMA cross exit)",
+    )
+    parser.add_argument(
         "--variants",
         default="baseline,ema_stack,llm",
         help="Comma-separated variant names",
@@ -113,6 +129,12 @@ def main() -> int:
     configure_logging(args.log_level)
     logger.info("Backtest starting — mock_mode={}", s.llm_mock_mode)
 
+    # Validate engine name early
+    try:
+        get_engine(args.engine)
+    except KeyError as e:
+        raise SystemExit(str(e))
+
     if args.csv:
         df = load_csv(args.csv)
     else:
@@ -125,6 +147,8 @@ def main() -> int:
         symbol=args.symbol,
         timeframe=args.tf,
         variants=variant_objs,
+        engine_name=args.engine,
+        exit_mode=args.exit_mode,
         stop_atr_mult=args.stop_atr_mult,
         rr=args.rr,
         max_bars=args.max_bars,

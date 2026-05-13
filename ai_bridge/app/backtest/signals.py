@@ -191,6 +191,134 @@ def _normalise_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Engine: psar_ema_vol (Parabolic SAR + EMA trend + Volume filter)
+# ──────────────────────────────────────────────────────────────────────
+def _parabolic_sar(
+    high: pd.Series, low: pd.Series, af_start: float = 0.02, af_step: float = 0.02, af_max: float = 0.2
+) -> pd.Series:
+    """Compute Parabolic SAR. Returns a Series where SAR < price → bullish."""
+    n = len(high)
+    sar = pd.Series(np.nan, index=high.index)
+    if n < 2:
+        return sar
+
+    # Initialize
+    bull = True
+    af = af_start
+    ep = float(high.iloc[0])
+    sar_val = float(low.iloc[0])
+
+    for i in range(1, n):
+        hi = float(high.iloc[i])
+        lo = float(low.iloc[i])
+
+        sar_val = sar_val + af * (ep - sar_val)
+
+        if bull:
+            if lo < sar_val:
+                bull = False
+                sar_val = ep
+                ep = lo
+                af = af_start
+            else:
+                if hi > ep:
+                    ep = hi
+                    af = min(af + af_step, af_max)
+        else:
+            if hi > sar_val:
+                bull = True
+                sar_val = ep
+                ep = hi
+                af = af_start
+            else:
+                if lo < ep:
+                    ep = lo
+                    af = min(af + af_step, af_max)
+
+        sar.iloc[i] = sar_val
+
+    return sar
+
+
+def psar_ema_vol_engine(
+    df: pd.DataFrame,
+    *,
+    symbol: str,
+    timeframe: str,
+    ema_fast: int = 21,
+    ema_slow: int = 50,
+    ema_base: int = 200,
+    atr_len: int = 14,
+    rsi_len: int = 14,
+    vol_sma_len: int = 20,
+    vol_mult: float = 1.2,
+) -> list[SignalRow]:
+    """PSAR + EMA trend + Volume confirmation engine.
+
+    Signal logic:
+      strong_long  → PSAR flips below price AND EMA stack bullish AND volume > vol_mult × SMA(vol)
+      strong_short → PSAR flips above price AND EMA stack bearish AND volume > vol_mult × SMA(vol)
+    """
+    df = _normalise_ohlcv(df)
+
+    ema_f = _ema(df["close"], ema_fast)
+    ema_s = _ema(df["close"], ema_slow)
+    ema_b = _ema(df["close"], ema_base)
+    atr = _atr(df["high"], df["low"], df["close"], atr_len)
+    rsi = _rsi(df["close"], rsi_len)
+    mf = _money_flow(df)
+    ms = _ms_state(df["close"], ema_f, ema_s, ema_b)
+
+    sar = _parabolic_sar(df["high"], df["low"])
+    vol_sma = df["volume"].rolling(vol_sma_len, min_periods=1).mean()
+    vol_confirm = df["volume"] > vol_mult * vol_sma
+
+    # PSAR flip detection: SAR was above price, now below (bull flip) and vice versa
+    sar_below = sar < df["close"]
+    sar_above = sar > df["close"]
+    bull_flip = sar_below & (~sar_below).shift(1, fill_value=True)
+    bear_flip = sar_above & (~sar_above).shift(1, fill_value=True)
+
+    bull_trend = (ema_f > ema_s) & (ema_s > ema_b)
+    bear_trend = (ema_f < ema_s) & (ema_s < ema_b)
+
+    strong_long = bull_flip & bull_trend & vol_confirm
+    strong_short = bear_flip & bear_trend & vol_confirm
+
+    rows: list[SignalRow] = []
+    for i, ts in enumerate(df.index):
+        if strong_long.iloc[i]:
+            name = "strong_long"
+        elif strong_short.iloc[i]:
+            name = "strong_short"
+        else:
+            continue
+        if pd.isna(atr.iloc[i]) or pd.isna(rsi.iloc[i]) or pd.isna(sar.iloc[i]):
+            continue
+        rows.append(
+            SignalRow(
+                ts=ts,
+                symbol=symbol,
+                timeframe=timeframe,
+                signal=name,
+                price=float(df["close"].iloc[i]),
+                ms_state=str(ms[i]),
+                rsi=float(rsi.iloc[i]),
+                atr=float(atr.iloc[i]),
+                money_flow=float(mf.iloc[i]),
+                ema_fast=float(ema_f.iloc[i]),
+                ema_slow=float(ema_s.iloc[i]),
+                ema_base=float(ema_b.iloc[i]),
+            )
+        )
+    return rows
+
+
+# Register the new engine
+register_engine("psar_ema_vol", psar_ema_vol_engine)
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Public engine registry
 # ──────────────────────────────────────────────────────────────────────
 EngineFn = Callable[..., list[SignalRow]]
@@ -213,6 +341,7 @@ def get_engine(name: str = "smartgold") -> EngineFn:
 __all__ = [
     "SignalRow",
     "smartgold_engine",
+    "psar_ema_vol_engine",
     "register_engine",
     "get_engine",
 ]

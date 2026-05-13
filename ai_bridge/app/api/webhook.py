@@ -19,6 +19,7 @@ from app.config.settings import get_settings
 from app.context.market_context import fetch_macro_context
 from app.engine.decision_engine import evaluate_signal
 from app.executor.factory import build_executor
+from app.guards.chain import Verdict, build_default_chain
 from app.models.schemas import BridgeResponse, TradingViewAlert
 from app.notifier.telegram import TelegramNotifier
 from app.storage.signal_log import SignalLog
@@ -120,6 +121,36 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
 
     # ── LLM decision ───────────────────────────────────────────────────
     decision = await evaluate_signal(alert, context, settings=settings)
+
+    # ── Safety guards ──────────────────────────────────────────────────
+    guard_chain = build_default_chain(settings)
+    guard_context = {
+        "decision": decision,
+        "alert": alert,
+        "macro": context,
+        "settings": settings,
+        # TODO: wire daily_trades / daily_pnl_r from SignalLog aggregation
+        "daily_trades": 0,
+        "daily_pnl_r": 0.0,
+    }
+    guard_verdict, guard_results = guard_chain.run(guard_context)
+
+    if guard_verdict == Verdict.BLOCK:
+        logger.info(
+            "Guards BLOCKED signal {} {} — {}",
+            alert.symbol,
+            alert.signal,
+            guard_results[-1].reason if guard_results else "unknown",
+        )
+        return BridgeResponse(
+            accepted=False,
+            alert=alert,
+            context=context,
+            decision=decision,
+            notifier_sent=False,
+            signal_id=None,
+            execution={},
+        )
 
     # ── Notify & log ───────────────────────────────────────────────────
     notified = False

@@ -85,6 +85,52 @@ def _exit_short(
     return last, float(bars["close"].iloc[last]), "timeout"
 
 
+def _exit_long_indicator(
+    bars: pd.DataFrame,
+    entry_idx: int,
+    entry_price: float,
+    stop: float,
+    take: float,
+    max_bars: int,
+    exit_signal: pd.Series,
+) -> tuple[int, float, str]:
+    """Like _exit_long but also exits on indicator signal (EMA cross)."""
+    last = min(len(bars) - 1, entry_idx + max_bars)
+    for i in range(entry_idx + 1, last + 1):
+        hi = float(bars["high"].iloc[i])
+        lo = float(bars["low"].iloc[i])
+        if lo <= stop:
+            return i, stop, "sl"
+        if hi >= take:
+            return i, take, "tp"
+        if exit_signal.iloc[i]:
+            return i, float(bars["close"].iloc[i]), "indicator"
+    return last, float(bars["close"].iloc[last]), "timeout"
+
+
+def _exit_short_indicator(
+    bars: pd.DataFrame,
+    entry_idx: int,
+    entry_price: float,
+    stop: float,
+    take: float,
+    max_bars: int,
+    exit_signal: pd.Series,
+) -> tuple[int, float, str]:
+    """Like _exit_short but also exits on indicator signal (EMA cross)."""
+    last = min(len(bars) - 1, entry_idx + max_bars)
+    for i in range(entry_idx + 1, last + 1):
+        hi = float(bars["high"].iloc[i])
+        lo = float(bars["low"].iloc[i])
+        if hi >= stop:
+            return i, stop, "sl"
+        if lo <= take:
+            return i, take, "tp"
+        if exit_signal.iloc[i]:
+            return i, float(bars["close"].iloc[i]), "indicator"
+    return last, float(bars["close"].iloc[last]), "timeout"
+
+
 def simulate_trades(
     df: pd.DataFrame,
     signals: Iterable,
@@ -93,6 +139,7 @@ def simulate_trades(
     stop_atr_mult: float = 1.5,
     rr: float = 2.0,
     max_bars: int = 48,
+    exit_mode: str = "fixed_rr",
 ) -> list[TradeResult]:
     """Walk each signal forward and record the exit.
 
@@ -106,6 +153,7 @@ def simulate_trades(
         stop_atr_mult: stop distance = ATR × this value.
         rr:        take profit = stop_distance × rr.
         max_bars:  timeout after this many bars if neither SL nor TP hit.
+        exit_mode: "fixed_rr" (default) or "indicator" (exit on EMA cross / PSAR flip).
     """
     if df.empty:
         return []
@@ -113,6 +161,17 @@ def simulate_trades(
     # df must be sorted; signals should come from the same df.
     bars = df.sort_index()
     idx_lookup = {ts: i for i, ts in enumerate(bars.index)}
+
+    # Pre-compute indicator exit signals if needed
+    _indicator_exit_long = None
+    _indicator_exit_short = None
+    if exit_mode == "indicator":
+        ema_f = bars["close"].ewm(span=21, adjust=False).mean()
+        ema_s = bars["close"].ewm(span=50, adjust=False).mean()
+        # Exit long when fast EMA crosses below slow EMA
+        _indicator_exit_long = (ema_f < ema_s) & (ema_f.shift(1) >= ema_s.shift(1))
+        # Exit short when fast EMA crosses above slow EMA
+        _indicator_exit_short = (ema_f > ema_s) & (ema_f.shift(1) <= ema_s.shift(1))
 
     out: list[TradeResult] = []
     for sig in signals:
@@ -138,16 +197,28 @@ def simulate_trades(
         if side == "long":
             stop = entry_price - stop_distance
             take = entry_price + stop_distance * rr
-            exit_idx, exit_price, reason = _exit_long(
-                bars, entry_idx, entry_price, stop, take, max_bars
-            )
+            if exit_mode == "indicator" and _indicator_exit_long is not None:
+                exit_idx, exit_price, reason = _exit_long_indicator(
+                    bars, entry_idx, entry_price, stop, take, max_bars,
+                    _indicator_exit_long,
+                )
+            else:
+                exit_idx, exit_price, reason = _exit_long(
+                    bars, entry_idx, entry_price, stop, take, max_bars
+                )
             pnl_points = exit_price - entry_price
         else:
             stop = entry_price + stop_distance
             take = entry_price - stop_distance * rr
-            exit_idx, exit_price, reason = _exit_short(
-                bars, entry_idx, entry_price, stop, take, max_bars
-            )
+            if exit_mode == "indicator" and _indicator_exit_short is not None:
+                exit_idx, exit_price, reason = _exit_short_indicator(
+                    bars, entry_idx, entry_price, stop, take, max_bars,
+                    _indicator_exit_short,
+                )
+            else:
+                exit_idx, exit_price, reason = _exit_short(
+                    bars, entry_idx, entry_price, stop, take, max_bars
+                )
             pnl_points = entry_price - exit_price
 
         pnl_r = pnl_points / stop_distance if stop_distance > 0 else 0.0
