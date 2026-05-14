@@ -69,6 +69,7 @@ class CTraderMCPClient:
         self._timeout = timeout
         self._http: httpx.AsyncClient | None = None
         self._initialized = False
+        self._session_id: str | None = None  # Mcp-Session-Id from server
         self._tools: dict[str, dict] = {}  # name → tool schema
         self._request_id = 0
         self._server_info: dict = {}
@@ -84,30 +85,51 @@ class CTraderMCPClient:
     # Lifecycle
     # ──────────────────────────────────────────────────────────────────
     async def connect(self) -> None:
-        """Initialize MCP session and discover tools."""
+        """Initialize MCP session and discover tools.
+
+        Flow per MCP Streamable HTTP spec:
+          1. POST initialize → get Mcp-Session-Id from response headers
+          2. POST notifications/initialized (fire-and-forget notification)
+          3. POST tools/list → discover tools (with session header)
+        """
         if self._http is None:
             self._http = httpx.AsyncClient(
                 timeout=self._timeout,
                 headers={
                     "Authorization": f"Bearer {self._token}",
                     "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
                 },
             )
 
-        # Step 1: Initialize
-        init_result = await self._send("initialize", {
+        # Step 1: Initialize — capture session ID from response headers
+        init_result, init_headers = await self._send_with_headers("initialize", {
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": {},
             "clientInfo": {"name": "SmartGold-Bridge", "version": "2.0.0"},
         })
-        self._server_info = init_result
-        self._initialized = True
-        logger.info(
-            "cTrader MCP: initialized (server={})",
-            init_result.get("serverInfo", {}).get("name", "unknown"),
+
+        # Extract Mcp-Session-Id from response headers (try multiple casings)
+        self._session_id = (
+            init_headers.get("mcp-session-id")
+            or init_headers.get("Mcp-Session-Id")
+            or init_headers.get("MCP-Session-Id")
         )
 
-        # Step 2: Discover tools
+        self._server_info = init_result
+        logger.info(
+            "cTrader MCP: initialized (server={}, session_id={})",
+            init_result.get("serverInfo", {}).get("name", "unknown"),
+            (self._session_id[:16] + "...") if self._session_id else "none",
+        )
+
+        # Step 2: Send notifications/initialized (required by MCP spec)
+        # This is a JSON-RPC notification (no "id" field, no response expected)
+        await self._send_notification("notifications/initialized", {})
+
+        self._initialized = True
+
+        # Step 3: Discover tools (now with session header)
         tools_result = await self._send("tools/list", {})
         tools_list = tools_result.get("tools", [])
         self._tools = {t["name"]: t for t in tools_list}
@@ -123,6 +145,7 @@ class CTraderMCPClient:
             await self._http.aclose()
             self._http = None
         self._initialized = False
+        self._session_id = None
 
     @property
     def is_connected(self) -> bool:
@@ -341,7 +364,12 @@ class CTraderMCPClient:
         return None
 
     async def _send(self, method: str, params: dict) -> dict:
-        """Send a JSON-RPC 2.0 request to the MCP server."""
+        """Send a JSON-RPC 2.0 request to the MCP server (with session header)."""
+        result, _ = await self._send_with_headers(method, params)
+        return result
+
+    async def _send_with_headers(self, method: str, params: dict) -> tuple[dict, httpx.Headers]:
+        """Send a JSON-RPC 2.0 request and return (result, response_headers)."""
         if self._http is None:
             raise CTraderMCPError(code=-1, message="Client not connected")
 
@@ -353,8 +381,15 @@ class CTraderMCPClient:
             "params": params,
         }
 
+        # Include Mcp-Session-Id header if we have one
+        extra_headers: dict[str, str] = {}
+        if self._session_id:
+            extra_headers["Mcp-Session-Id"] = self._session_id
+
         try:
-            response = await self._http.post(self._endpoint, json=payload)
+            response = await self._http.post(
+                self._endpoint, json=payload, headers=extra_headers,
+            )
         except httpx.TimeoutException as exc:
             raise CTraderMCPError(
                 code=-2,
@@ -389,7 +424,38 @@ class CTraderMCPClient:
                 data=err.get("data"),
             )
 
-        return data.get("result", data)
+        return data.get("result", data), response.headers
+
+    async def _send_notification(self, method: str, params: dict) -> None:
+        """Send a JSON-RPC 2.0 notification (no id, no response expected).
+
+        Per MCP spec, notifications have no "id" field. Server may return
+        200/202/204 — all acceptable.
+        """
+        if self._http is None:
+            raise CTraderMCPError(code=-1, message="Client not connected")
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+        }
+
+        extra_headers: dict[str, str] = {}
+        if self._session_id:
+            extra_headers["Mcp-Session-Id"] = self._session_id
+
+        try:
+            response = await self._http.post(
+                self._endpoint, json=payload, headers=extra_headers,
+            )
+            if response.status_code >= 400:
+                logger.warning(
+                    "cTrader MCP: notification {} returned HTTP {}",
+                    method, response.status_code,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("cTrader MCP: notification {} failed: {}", method, exc)
 
 
 __all__ = ["CTraderMCPClient", "CTraderMCPError", "CTRADER_MCP_TRADING"]
