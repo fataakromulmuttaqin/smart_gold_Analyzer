@@ -36,14 +36,11 @@ _signal_log = SignalLog()
 _notifier = TelegramNotifier()
 # Built lazily on first request so tests / offline validators that change
 # env vars after import still see the right settings.
-_executor = None
+# Re-evaluates if previous executor was noop (allows hot-reload of cTrader config).
 
 
 def _get_executor():
-    global _executor
-    if _executor is None:
-        _executor = build_executor()
-    return _executor
+    return build_executor()
 
 
 def _check_cooldown(alert: TradingViewAlert, cooldown_s: int) -> bool:
@@ -185,6 +182,8 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
         )
     elif execution.error:
         logger.warning("Executor error: {}", execution.error)
+        # Notify trader about execution failure so they can intervene
+        await _notifier.send_execution_error(alert, decision, execution)
 
     # Log every signal (even skips) for audit
     try:

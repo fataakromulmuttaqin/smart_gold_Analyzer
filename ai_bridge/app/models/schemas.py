@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,9 +15,18 @@ class TradingViewAlert(BaseModel):
 
     The SmartGold indicator's ``alertcondition()`` is wired via a custom
     JSON message in TradingView — see pinescript/ALERT_PAYLOAD.md.
+
+    Accepts multiple key naming conventions from TradingView:
+      - ema_fast / ema20      → EMA 20
+      - ema_mid / ema50       → EMA 50
+      - ema_slow / ema100     → EMA 100
+      - ema_base / ema200     → EMA 200
+      - atr / atr14           → ATR(14)
+      - volume_sma / vol_sma  → SMA(volume, 20)
+      - psar_below / psar_below_price → SAR position
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     secret: str = Field(..., description="Shared WEBHOOK_SECRET for auth")
     symbol: str = Field(..., description="e.g. OANDA:XAUUSD")
@@ -43,30 +52,47 @@ class TradingViewAlert(BaseModel):
 
     # ── PSAR + EMA + Volume strategy fields (v2+) ───────────────────────
     # EMA Ribbon (20 / 50 / 100 / 200)
-    ema_fast: float | None = Field(default=None, description="EMA 20")
-    ema_mid: float | None = Field(default=None, description="EMA 50")
-    ema_slow: float | None = Field(default=None, description="EMA 100")
-    ema_base: float | None = Field(default=None, description="EMA 200 trend filter")
+    # Accepts both internal names (ema_fast) and TradingView names (ema20)
+    ema_fast: float | None = Field(
+        default=None, alias="ema20", description="EMA 20"
+    )
+    ema_mid: float | None = Field(
+        default=None, alias="ema50", description="EMA 50"
+    )
+    ema_slow: float | None = Field(
+        default=None, alias="ema100", description="EMA 100"
+    )
+    ema_base: float | None = Field(
+        default=None, alias="ema200", description="EMA 200 trend filter"
+    )
 
     # Parabolic SAR
     psar: float | None = Field(default=None, description="Current SAR value")
     psar_below: bool | None = Field(
-        default=None, description="True = bullish (SAR below price)"
+        default=None,
+        alias="psar_below_price",
+        description="True = bullish (SAR below price)",
     )
 
     # Volume
     volume: float | None = Field(default=None, description="Raw volume at signal bar")
-    volume_sma: float | None = Field(default=None, description="SMA(volume, 20)")
+    volume_sma: float | None = Field(
+        default=None, alias="vol_sma", description="SMA(volume, 20)"
+    )
     volume_ratio: float | None = Field(
-        default=None, description="volume / volume_sma (>1 = above avg)"
+        default=None, alias="vol_ratio", description="volume / volume_sma (>1 = above avg)"
     )
 
     # Trend state
-    bull_trend: bool | None = Field(default=None, description="Full bull alignment")
-    bear_trend: bool | None = Field(default=None, description="Full bear alignment")
+    bull_trend: bool | None = Field(
+        default=None, alias="bull_trend_aligned", description="Full bull alignment"
+    )
+    bear_trend: bool | None = Field(
+        default=None, alias="bear_trend_aligned", description="Full bear alignment"
+    )
 
     # Risk / position
-    atr: float | None = Field(default=None, description="ATR(14)")
+    atr: float | None = Field(default=None, alias="atr14", description="ATR(14)")
     bars_since_entry: int | None = Field(
         default=None, description="0 for entries; N for exits"
     )
@@ -79,6 +105,66 @@ class TradingViewAlert(BaseModel):
     ms_state: str | None = None
     rsi: float | None = None
     money_flow: float | None = None
+
+    def model_post_init(self, __context: Any) -> None:
+        """Handle additional field name mappings from TradingView alerts.
+
+        TradingView may send keys like 'ema_fast', 'ema_mid' etc. directly,
+        or alternative names. This post-init fills None fields from the
+        extra data if the primary alias didn't match.
+        """
+        extra = self.model_extra or {}
+
+        # EMA fields: accept both underscore and numeric naming
+        if self.ema_fast is None:
+            self.ema_fast = _coerce_float(extra.get("ema_fast") or extra.get("ema_20"))
+        if self.ema_mid is None:
+            self.ema_mid = _coerce_float(extra.get("ema_mid") or extra.get("ema_50"))
+        if self.ema_slow is None:
+            self.ema_slow = _coerce_float(extra.get("ema_slow") or extra.get("ema_100"))
+        if self.ema_base is None:
+            self.ema_base = _coerce_float(extra.get("ema_base") or extra.get("ema_200"))
+
+        # ATR: accept 'atr', 'atr14', 'atr_14'
+        if self.atr is None:
+            self.atr = _coerce_float(extra.get("atr") or extra.get("atr_14"))
+
+        # PSAR below: accept various names
+        if self.psar_below is None:
+            val = extra.get("psar_below") or extra.get("psar_below_price")
+            if val is not None:
+                self.psar_below = bool(val)
+
+        # Volume fields
+        if self.volume_sma is None:
+            self.volume_sma = _coerce_float(
+                extra.get("volume_sma") or extra.get("volume_sma20") or extra.get("vol_sma20")
+            )
+        if self.volume_ratio is None:
+            self.volume_ratio = _coerce_float(
+                extra.get("volume_ratio") or extra.get("vol_ratio")
+            )
+
+        # Trend alignment
+        if self.bull_trend is None:
+            val = extra.get("bull_trend") or extra.get("bull_trend_aligned")
+            if val is not None:
+                self.bull_trend = bool(val)
+        if self.bear_trend is None:
+            val = extra.get("bear_trend") or extra.get("bear_trend_aligned")
+            if val is not None:
+                self.bear_trend = bool(val)
+
+
+def _coerce_float(val: Any) -> float | None:
+    """Safely coerce a value to float, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return f if f == f else None  # NaN check
+    except (TypeError, ValueError):
+        return None
 
 
 # ══════════════════════════════════════════════════════════════════════════

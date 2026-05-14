@@ -6,6 +6,8 @@ the webhook response.
 """
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
 from app.config.settings import Settings, get_settings
@@ -106,5 +108,58 @@ class TelegramNotifier:
             logger.warning("Telegram send failed: {}", exc)
             return False
 
+    async def send_execution_error(
+        self,
+        alert: TradingViewAlert,
+        decision: LLMDecision,
+        execution: Any,
+    ) -> bool:
+        """Notify trader when an order execution fails.
 
-__all__ = ["TelegramNotifier", "_format_message"]
+        This is critical — if a signal was approved (execute/reduce) but
+        the broker rejected the order, the trader needs to know immediately.
+        """
+        if not self.settings.telegram_is_configured:
+            return False
+
+        error_msg = getattr(execution, "error", None) or "unknown error"
+        note = getattr(execution, "note", "") or ""
+
+        text = (
+            f"🚨 *ORDER EXECUTION FAILED*\n"
+            f"_{alert.symbol} / {alert.timeframe}m — {alert.signal}_\n"
+            f"Price: `{alert.price}`  Decision: `{decision.action}` ({decision.confidence:.2f})\n"
+            f"\n*Error:* `{error_msg}`\n"
+            f"*Note:* {note}\n"
+            f"\n⚠️ Signal was approved but order NOT placed. "
+            f"Check: cTrader token, account balance, symbol name."
+        )
+
+        url = (
+            f"https://api.telegram.org/bot{self.settings.telegram_bot_token}"
+            f"/sendMessage"
+        )
+        payload = {
+            "chat_id": self.settings.telegram_chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.warning(
+                    "Telegram exec-error notify failed HTTP {}: {}",
+                    resp.status_code,
+                    resp.text[:200],
+                )
+                return False
+            return True
+        except httpx.HTTPError as exc:
+            logger.warning("Telegram exec-error send failed: {}", exc)
+            return False
+
+
+__all__ = ["TelegramNotifier"]
