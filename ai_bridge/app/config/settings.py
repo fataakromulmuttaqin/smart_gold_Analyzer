@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     twelvedata_api_key: str = Field(default="", alias="TWELVEDATA_API_KEY")
     # Alpha Vantage: free tier = 25 API calls/day. Sign up: https://www.alphavantage.co
     alphavantage_api_key: str = Field(default="", alias="ALPHAVANTAGE_API_KEY")
+    # Metals-API: free tier available. Sign up: https://metals-api.com
+    metals_api_key: str = Field(default="", alias="METALS_API_KEY")
+
+    # ── Gold price validation bounds ────────────────────────────────────
+    # Reject fetched prices outside this range (prevents stale/expired data)
+    # Per 2026: gold is ~$4,500-$5,000. Set wide margin for safety.
+    gold_price_min: float = Field(default=3000.0, alias="GOLD_PRICE_MIN")
+    gold_price_max: float = Field(default=7000.0, alias="GOLD_PRICE_MAX")
 
     # ── Telegram ─────────────────────────────────────────────────────────
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
@@ -73,10 +81,10 @@ class Settings(BaseSettings):
         default=-3.0, alias="GUARD_MAX_DAILY_DRAWDOWN_R"
     )
     guard_max_spread_points: float = Field(
-        default=50.0, alias="GUARD_MAX_SPREAD_POINTS"
+        default=150.0, alias="GUARD_MAX_SPREAD_POINTS"
     )
     guard_news_blackout: bool = Field(default=True, alias="GUARD_NEWS_BLACKOUT")
-    guard_max_atr: float = Field(default=12.0, alias="GUARD_MAX_ATR")
+    guard_max_atr: float = Field(default=50.0, alias="GUARD_MAX_ATR")
 
     # ── Stop Loss policy ────────────────────────────────────────────────
     # Policy options:

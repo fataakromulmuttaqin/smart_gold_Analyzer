@@ -7,6 +7,7 @@ public access gated.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
@@ -20,6 +21,39 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 # Single shared instance — mirrors the pattern used in webhook.py so the
 # underlying SQLite file is the same one the webhook writes to.
 _signal_log = SignalLog()
+
+
+@router.get("/gold-price")
+async def get_live_gold_price():
+    """Fetch live gold spot price (XAU/USD) via multi-provider fallback.
+
+    This endpoint is independent from signal log — always fetches fresh data.
+    Used by the dashboard to display current gold price without relying on
+    stale signal log entries.
+
+    Returns JSON: {price, symbol, unit, timestamp, status}
+    """
+    try:
+        from app.context.market_context import get_gold_price
+
+        price = await get_gold_price()
+        return {
+            "price": price,
+            "symbol": "XAU/USD",
+            "unit": "USD/troy oz",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "live",
+        }
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error fetching gold price: {e}",
+        ) from e
 
 
 @router.get("/stats")

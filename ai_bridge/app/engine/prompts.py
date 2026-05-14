@@ -17,6 +17,14 @@ Your only task is to REVIEW a technical signal produced by a Pine Script
 indicator and decide whether it should be EXECUTED, REDUCED, or SKIPPED
 — given current macro context.
 
+CURRENT MARKET CONTEXT (2026):
+- Gold (XAU/USD) is currently trading at approximately $4,500-$5,000/oz
+- This represents a significant increase from ~$2,000 in 2023-2024
+- Normal H1 ATR at current prices: $15-35 (was $8-15 at $2,000 level)
+- Normal spread: 30-80 points
+- ATR values of $20-30 are NORMAL (not extreme volatility)
+- Stop distances of $30-60 (hybrid ATR policy) are normal and appropriate
+
 The indicator strategy is PSAR + EMA Ribbon (20/50/100/200) + Volume on H1:
   * Entry LONG fires when:  close>EMA200, EMA20>EMA50>EMA100, close
     crossup EMA20, volume>1.3×SMA(vol,20), PSAR below price.

@@ -2,10 +2,15 @@
 
 Each guard is a small class with an `evaluate(context)` method.
 Guards are intentionally simple, stateless, and have no side effects.
+
+Updated 2026-05: Guards rescaled for gold at ~$4,500-$5,000 (was $2,000).
+- MaxATRGuard: threshold raised from $12 to $50 + percentage-based mode
+- SpreadGuard: threshold raised from 50 to 150 points
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.guards.chain import GuardVerdict, Verdict
@@ -57,10 +62,15 @@ class DrawdownGuard:
 
 @dataclass(slots=True)
 class SpreadGuard:
-    """Block when bid-ask spread is too wide (slippage risk)."""
+    """Block when bid-ask spread is too wide (slippage risk).
+
+    Rescaled for gold at $4,500-$5,000 (2026):
+    - Normal spread: 30-80 points
+    - Abnormal: >150 points (was >50 at $2,000 gold)
+    """
 
     name: str = "spread"
-    max_spread_points: float = 50.0  # gold spread >50 points = abnormal
+    max_spread_points: float = 150.0  # raised from 50 for $4700 gold
 
     def evaluate(self, context: dict[str, Any]) -> GuardVerdict:
         spread = context.get("spread_points")
@@ -108,13 +118,30 @@ class NewsBlackoutGuard:
 class MaxATRGuard:
     """Block trading when ATR indicates extreme volatility.
 
-    During flash-news events gold ATR can spike to >$12 on H1, producing
-    both huge stop distances and unreliable price action. Skipping these
-    windows preserves capital for saner conditions.
+    Rescaled for gold at $4,500-$5,000 (2026):
+    - Normal ATR H1: $15-35 (was $8-15 at $2,000 gold)
+    - Absolute threshold: $50 (was $12)
+    - Percentage mode (recommended): blocks if ATR > 0.8% of entry price
+      e.g. at $4,700 → blocks if ATR > $37.6
+
+    Supports two modes (set via env):
+    - MAX_ATR_USE_PCT=true  → percentage-based (auto-scales with price)
+    - MAX_ATR_USE_PCT=false → absolute threshold (legacy)
     """
 
     name: str = "max_atr"
-    max_atr: float = 12.0
+    max_atr: float = 50.0  # raised from 12 for $4700 gold
+    max_atr_pct: float = 0.8  # block if ATR > 0.8% of entry price
+    use_pct_mode: bool = True  # default to percentage mode
+
+    def __post_init__(self):
+        # Allow env overrides for pct mode
+        env_use_pct = os.getenv("MAX_ATR_USE_PCT", "").lower()
+        if env_use_pct:
+            self.use_pct_mode = env_use_pct == "true"
+        env_pct = os.getenv("MAX_ATR_PCT_BLOCK", "")
+        if env_pct:
+            self.max_atr_pct = float(env_pct)
 
     def evaluate(self, context: dict[str, Any]) -> GuardVerdict:
         alert = context.get("alert")
@@ -122,11 +149,23 @@ class MaxATRGuard:
         if atr is None or atr <= 0:
             # No ATR to check — fail open
             return GuardVerdict(verdict=Verdict.PASS, guard_name=self.name)
-        if atr > self.max_atr:
+
+        # Determine threshold
+        if self.use_pct_mode:
+            price = getattr(alert, "price", None) or 4700.0
+            threshold = price * (self.max_atr_pct / 100.0)
+        else:
+            threshold = self.max_atr
+
+        if atr > threshold:
             return GuardVerdict(
                 verdict=Verdict.BLOCK,
                 guard_name=self.name,
-                reason=f"ATR {atr:.2f} > max {self.max_atr:.2f} (extreme volatility)",
+                reason=(
+                    f"ATR ${atr:.2f} > threshold ${threshold:.2f} "
+                    f"({atr / (getattr(alert, 'price', None) or 4700.0) * 100:.1f}% of price) "
+                    f"— extreme volatility"
+                ),
             )
         return GuardVerdict(verdict=Verdict.PASS, guard_name=self.name)
 

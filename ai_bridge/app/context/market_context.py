@@ -1,10 +1,11 @@
 """Macro context provider.
 
-Pulls **DXY** (USD index) and **US 10Y yield** using a multi-provider
-fallback strategy:
+Pulls **DXY** (USD index), **US 10Y yield**, and **Gold spot price (XAU/USD)**
+using a multi-provider fallback strategy:
   1. yfinance (primary — but often blocked on VPS / servers)
   2. Twelve Data API (free tier, 800 req/day)
   3. Alpha Vantage API (free tier, 25 req/day)
+  4. Metals-API (free tier available)
 
 Gold news headlines via NewsAPI.org.
 
@@ -15,6 +16,9 @@ Gold correlation reminder:
   * DXY up → gold typically down (-0.7..-0.9 historical correlation)
   * Real yields up → gold down
   * Risk-off headlines → gold up
+
+Updated 2026-05: Added get_gold_price() with multi-provider fallback +
+price validation to prevent stale/expired data ($2000-an bug fix).
 """
 from __future__ import annotations
 
@@ -302,4 +306,186 @@ async def _noop_news() -> list[str]:
     return []
 
 
-__all__ = ["fetch_macro_context"]
+# ────────────────────────────────────────────────────────────────────────
+# Gold Price: Multi-provider with validation
+# ────────────────────────────────────────────────────────────────────────
+
+def _validate_gold_price(price: float, source: str, settings: Settings) -> float | None:
+    """Validate gold price is within expected range (prevents stale data bug)."""
+    min_price = settings.gold_price_min
+    max_price = settings.gold_price_max
+    if min_price <= price <= max_price:
+        return price
+    logger.warning(
+        "Gold price from '{}' INVALID: ${:.2f} (expected ${:.0f}-${:.0f}) — skipping",
+        source, price, min_price, max_price,
+    )
+    return None
+
+
+def _fetch_gold_yfinance_blocking(settings: Settings) -> float | None:
+    """Fetch gold spot price via yfinance with validation.
+
+    Uses XAUUSD=X (spot) as primary, GC=F (futures) as fallback.
+    GC=F can return expired contract data — hence the validation.
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        logger.debug("yfinance not installed — skipping")
+        return None
+
+    for ticker_sym in ["XAUUSD=X", "GC=F"]:
+        try:
+            ticker = yf.Ticker(ticker_sym)
+            hist = ticker.history(period="5d", interval="1h")
+            if hist is None or hist.empty:
+                logger.debug("yfinance/{}: history empty", ticker_sym)
+                continue
+            price = float(hist["Close"].dropna().iloc[-1])
+            validated = _validate_gold_price(price, f"yfinance/{ticker_sym}", settings)
+            if validated:
+                logger.info("Gold price from yfinance/{}: ${:.2f}", ticker_sym, validated)
+                return validated
+        except Exception as e:
+            logger.debug("yfinance/{} error: {}", ticker_sym, e)
+            continue
+    return None
+
+
+async def _fetch_gold_yfinance(settings: Settings) -> float | None:
+    return await asyncio.to_thread(_fetch_gold_yfinance_blocking, settings)
+
+
+async def _fetch_gold_twelvedata(settings: Settings) -> float | None:
+    """Fetch gold spot from TwelveData API."""
+    api_key = settings.twelvedata_api_key
+    if not api_key:
+        return None
+    try:
+        url = f"https://api.twelvedata.com/price?symbol=XAU/USD&apikey={api_key}"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200:
+            logger.warning("TwelveData gold HTTP {} — skipping", resp.status_code)
+            return None
+        data = resp.json()
+        if "price" not in data:
+            logger.warning("TwelveData gold response unexpected: {}", data)
+            return None
+        price = float(data["price"])
+        validated = _validate_gold_price(price, "TwelveData", settings)
+        if validated:
+            logger.info("Gold price from TwelveData: ${:.2f}", validated)
+        return validated
+    except Exception as e:
+        logger.warning("TwelveData gold fetch failed: {}", e)
+        return None
+
+
+async def _fetch_gold_alphavantage(settings: Settings) -> float | None:
+    """Fetch gold spot from AlphaVantage CURRENCY_EXCHANGE_RATE."""
+    api_key = settings.alphavantage_api_key
+    if not api_key:
+        return None
+    try:
+        url = (
+            "https://www.alphavantage.co/query"
+            "?function=CURRENCY_EXCHANGE_RATE"
+            f"&from_currency=XAU&to_currency=USD&apikey={api_key}"
+        )
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200:
+            logger.warning("AlphaVantage gold HTTP {} — skipping", resp.status_code)
+            return None
+        data = resp.json()
+        rate_data = data.get("Realtime Currency Exchange Rate", {})
+        if not rate_data:
+            logger.warning("AlphaVantage gold response empty: {}", data)
+            return None
+        price = float(rate_data.get("5. Exchange Rate", 0))
+        validated = _validate_gold_price(price, "AlphaVantage", settings)
+        if validated:
+            logger.info("Gold price from AlphaVantage: ${:.2f}", validated)
+        return validated
+    except Exception as e:
+        logger.warning("AlphaVantage gold fetch failed: {}", e)
+        return None
+
+
+async def _fetch_gold_metals_api(settings: Settings) -> float | None:
+    """Fetch gold spot from metals-api.com (returns XAU per 1 USD, inverted)."""
+    api_key = settings.metals_api_key
+    if not api_key:
+        return None
+    try:
+        url = f"https://metals-api.com/api/latest?access_key={api_key}&base=USD&symbols=XAU"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200:
+            logger.warning("metals-api gold HTTP {} — skipping", resp.status_code)
+            return None
+        data = resp.json()
+        if not data.get("success"):
+            logger.warning("metals-api error: {}", data.get("error"))
+            return None
+        xau_per_usd = float(data["rates"]["XAU"])
+        if xau_per_usd == 0:
+            return None
+        price = 1.0 / xau_per_usd  # Invert: USD per troy oz
+        validated = _validate_gold_price(price, "metals-api", settings)
+        if validated:
+            logger.info("Gold price from metals-api: ${:.2f}", validated)
+        return validated
+    except Exception as e:
+        logger.warning("metals-api gold fetch failed: {}", e)
+        return None
+
+
+async def get_gold_price(settings: Settings | None = None) -> float:
+    """Fetch gold spot price (XAU/USD) with multi-provider fallback.
+
+    Provider chain (in order):
+    1. yfinance/XAUUSD=X (spot)
+    2. yfinance/GC=F (futures fallback)
+    3. TwelveData (requires TWELVEDATA_API_KEY)
+    4. AlphaVantage (requires ALPHAVANTAGE_API_KEY)
+    5. metals-api (requires METALS_API_KEY)
+
+    Every provider result is validated: price must be between
+    GOLD_PRICE_MIN and GOLD_PRICE_MAX (default $3,000-$7,000).
+
+    Returns:
+        float: XAU/USD price in USD per troy ounce
+
+    Raises:
+        RuntimeError: If all providers fail
+    """
+    s = settings or get_settings()
+
+    providers = [
+        ("yfinance", _fetch_gold_yfinance),
+        ("TwelveData", _fetch_gold_twelvedata),
+        ("AlphaVantage", _fetch_gold_alphavantage),
+        ("metals-api", _fetch_gold_metals_api),
+    ]
+
+    for name, provider in providers:
+        try:
+            price = await provider(s)
+            if price is not None:
+                return price
+        except Exception as e:
+            logger.warning("Gold provider '{}' exception: {}", name, e)
+            continue
+
+    raise RuntimeError(
+        "All gold price providers failed. "
+        "Check: (1) VPS connectivity to Yahoo Finance, "
+        "(2) TWELVEDATA_API_KEY / ALPHAVANTAGE_API_KEY / METALS_API_KEY in .env, "
+        "(3) firewall rules."
+    )
+
+
+__all__ = ["fetch_macro_context", "get_gold_price"]
