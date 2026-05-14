@@ -111,17 +111,13 @@ class Settings(BaseSettings):
         default=0.5, alias="RISK_PER_TRADE_PCT_REDUCE"
     )
 
-    # ── cTrader Open API execution (RECOMMENDED for Linux) ──────────────
-    # Pure Python + asyncio WebSocket. No Wine, no GUI. Works headless.
-    # Get credentials from https://openapi.ctrader.com/ after linking your
-    # IC Markets cTrader account.
+    # ── cTrader MCP execution (RECOMMENDED for Linux) ──────────────────
+    # Pure HTTP POST to mcp.ctrader.com. No WebSocket, no Wine, no GUI.
+    # Just paste the bearer token from cTrader platform settings.
+    # Token is a base64 JSON: {"plant":"ctrader","environment":"demo","token":"..."}
     ctrader_enabled: bool = Field(default=False, alias="CTRADER_ENABLED")
-    ctrader_client_id: str = Field(default="", alias="CTRADER_CLIENT_ID")
-    ctrader_client_secret: str = Field(default="", alias="CTRADER_CLIENT_SECRET")
-    ctrader_access_token: str = Field(default="", alias="CTRADER_ACCESS_TOKEN")
-    ctrader_account_id: str = Field(default="", alias="CTRADER_ACCOUNT_ID")
+    ctrader_token: str = Field(default="", alias="CTRADER_TOKEN")
     ctrader_symbol: str = Field(default="XAUUSD", alias="CTRADER_SYMBOL")
-    ctrader_demo_mode: bool = Field(default=True, alias="CTRADER_DEMO_MODE")
     ctrader_fixed_lot: float = Field(default=0.0, alias="CTRADER_FIXED_LOT")
     ctrader_label: str = Field(default="SmartGold", alias="CTRADER_LABEL")
 
@@ -171,14 +167,8 @@ class Settings(BaseSettings):
 
     @property
     def ctrader_is_configured(self) -> bool:
-        """True if cTrader is enabled and essential credentials present."""
-        return (
-            self.ctrader_enabled
-            and bool(self.ctrader_client_id)
-            and bool(self.ctrader_client_secret)
-            and bool(self.ctrader_access_token)
-            and bool(self.ctrader_account_id)
-        )
+        """True if cTrader is enabled and the MCP token is present."""
+        return self.ctrader_enabled and bool(self.ctrader_token)
 
     @property
     def mt5_is_configured(self) -> bool:

@@ -17,7 +17,7 @@ from app.utils.logging import logger
 def build_executor(settings: Settings | None = None) -> Executor:
     s = settings or get_settings()
 
-    # ── Priority 1: cTrader Open API ─────────────────────────────────
+    # ── Priority 1: cTrader MCP ────────────────────────────────────────
     if s.ctrader_enabled:
         try:
             from app.executor.ctrader import CTraderExecutor
@@ -27,17 +27,17 @@ def build_executor(settings: Settings | None = None) -> Executor:
 
         ex = CTraderExecutor(settings=s)
         # cTrader uses lazy connect (on first execute()) so we don't
-        # block startup. Just verify config is present.
+        # block startup. Just verify token is present.
         if s.ctrader_is_configured:
             logger.info(
-                "Executor: ctrader (lazy connect on first signal) — symbol={}",
+                "Executor: ctrader MCP (lazy connect on first signal) — symbol={}",
                 s.ctrader_symbol,
             )
             return ex
         else:
             logger.warning(
-                "Executor: CTRADER_ENABLED=true but config incomplete. "
-                "Need CLIENT_ID, CLIENT_SECRET, ACCESS_TOKEN, ACCOUNT_ID. "
+                "Executor: CTRADER_ENABLED=true but CTRADER_TOKEN is empty. "
+                "Generate token from cTrader platform settings. "
                 "Falling back to noop."
             )
             return NoopExecutor()
