@@ -91,14 +91,30 @@ class CTraderMCPClient:
           1. POST initialize → get Mcp-Session-Id from response headers
           2. POST notifications/initialized (fire-and-forget notification)
           3. POST tools/list → discover tools (with session header)
+
+        IMPORTANT: cTrader MCP ties the session to the TCP connection.
+        We force HTTP/1.1 with a single keep-alive connection so all
+        requests in the session go over the same socket.
         """
         if self._http is None:
+            # Force HTTP/1.1 with a single persistent connection.
+            # cTrader MCP server binds the session to the TCP socket —
+            # if we open a new connection, the server sees "No valid session".
+            limits = httpx.Limits(
+                max_connections=1,
+                max_keepalive_connections=1,
+                keepalive_expiry=300,  # Keep socket alive 5 min
+            )
             self._http = httpx.AsyncClient(
+                http1=True,
+                http2=False,
+                limits=limits,
                 timeout=self._timeout,
                 headers={
                     "Authorization": f"Bearer {self._token}",
                     "Content-Type": "application/json",
                     "Accept": "application/json, text/event-stream",
+                    "Connection": "keep-alive",
                 },
             )
 
