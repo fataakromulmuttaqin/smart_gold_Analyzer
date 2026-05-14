@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartGold Analyzer Pro — Dashboard</title>
+
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --gold: #B8960C;
+      --gold-dim: #7A6208;
+      --gold-light: #F5E27A;
+
+      --bg: #0E0F11;
+      --bg2: #16181C;
+      --bg3: #1E2026;
+      --bg4: #252830;
+
+      --t1: #F0F1F3;
+      --t2: #8B8F9A;
+      --t3: #555963;
+
+      --border: rgba(255,255,255,0.07);
+      --border2: rgba(255,255,255,0.13);
+
+      --green: #1D9E75;
+      --green-bg: rgba(29,158,117,0.12);
+      --green-border: rgba(29,158,117,0.3);
+
+      --red: #D85A30;
+      --red-bg: rgba(216,90,48,0.12);
+      --red-border: rgba(216,90,48,0.3);
+
+      --blue: #378ADD;
+      --blue-bg: rgba(55,138,221,0.12);
+      --blue-border: rgba(55,138,221,0.3);
+
+      --amber: #BA7517;
+      --amber-bg: rgba(186,117,23,0.12);
+      --amber-border: rgba(186,117,23,0.3);
+
+      --r-sm: 6px;
+      --r: 10px;
+      --r-lg: 14px;
+
+      font-family: -apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+      font-size: 14px;
+      color: var(--t1);
+      background: var(--bg);
+      line-height: 1.5;
+    }
+
+    /* ── Layout ── */
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 220px; flex-shrink: 0; background: var(--bg2); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; padding: 1.25rem 0.75rem; position: fixed; top: 0; left: 0; height: 100vh; }
+    .main { margin-left: 220px; flex: 1; min-height: 100vh; }
+    .topbar { height: 56px; background: var(--bg2); border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; position: sticky; top: 0; z-index: 10; }
+    .content { padding: 1.5rem; max-width: 1280px; }
+
+    /* ── Sidebar ── */
+    .logo { display: flex; align-items: center; gap: 10px; padding: 0.5rem 0.5rem 1.5rem; border-bottom: 0.5px solid var(--border); margin-bottom: 1rem; }
+    .logo-icon { width: 34px; height: 34px; background: var(--gold); border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .logo-icon i { color: #fff; font-size: 17px; }
+    .logo-text { font-size: 14px; font-weight: 600; color: var(--t1); line-height: 1.2; }
+    .logo-sub { font-size: 10px; color: var(--t2); }
+
+    .nav-section { font-size: 10px; font-weight: 600; color: var(--t3); letter-spacing: 0.08em; text-transform: uppercase; padding: 0.5rem 0.75rem 0.35rem; margin-top: 0.5rem; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--r-sm); color: var(--t2); font-size: 13px; cursor: pointer; transition: all 0.12s; text-decoration: none; }
+    .nav-item:hover { background: var(--bg3); color: var(--t1); }
+    .nav-item.active { background: rgba(184,150,12,0.15); color: var(--gold); font-weight: 500; }
+    .nav-item i { font-size: 16px; }
+    .nav-badge { margin-left: auto; font-size: 10px; background: var(--red-bg); color: var(--red); border-radius: 20px; padding: 2px 6px; font-weight: 600; }
+    .nav-badge.green { background: var(--green-bg); color: var(--green); }
+
+    .sidebar-bottom { margin-top: auto; padding-top: 1rem; border-top: 0.5px solid var(--border); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; flex-shrink: 0; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+    /* ── Topbar ── */
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .breadcrumb { font-size: 13px; color: var(--t2); }
+    .breadcrumb span { color: var(--t1); font-weight: 500; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+    .price-ticker { display: flex; align-items: center; gap: 8px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: var(--r); padding: 6px 14px; }
+    .price-ticker-label { font-size: 11px; color: var(--t2); }
+    .price-ticker-val { font-size: 15px; font-weight: 600; color: var(--gold); font-variant-numeric: tabular-nums; }
+    .price-ticker-chg { font-size: 11px; }
+
+    .live-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500; color: var(--green); background: var(--green-bg); border: 0.5px solid var(--green-border); padding: 5px 12px; border-radius: 20px; }
+
+    .topbar-btn { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: var(--bg3); border: 0.5px solid var(--border); border-radius: var(--r-sm); cursor: pointer; color: var(--t2); transition: all 0.12s; }
+    .topbar-btn:hover { background: var(--bg4); color: var(--t1); }
+
+    /* ── KPI cards ── */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.25rem; }
+    .kpi-card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--r-lg); padding: 1.1rem 1.25rem; position: relative; overflow: hidden; transition: border-color 0.15s; }
+    .kpi-card:hover { border-color: var(--border2); }
+    .kpi-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem; }
+    .kpi-label { font-size: 11px; color: var(--t2); font-weight: 500; }
+    .kpi-icon { width: 32px; height: 32px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; }
+    .kpi-icon i { font-size: 16px; }
+    .kpi-icon.gold { background: rgba(184,150,12,0.15); color: var(--gold); }
+    .kpi-icon.green { background: var(--green-bg); color: var(--green); }
+    .kpi-icon.blue { background: var(--blue-bg); color: var(--blue); }
+    .kpi-icon.red { background: var(--red-bg); color: var(--red); }
+    .kpi-val { font-size: 26px; font-weight: 700; color: var(--t1); line-height: 1; margin-bottom: 0.35rem; font-variant-numeric: tabular-nums; }
+    .kpi-sub { font-size: 11px; color: var(--t2); display: flex; align-items: center; gap: 4px; }
+    .up { color: var(--green); }
+    .down { color: var(--red); }
+    .neutral { color: var(--t2); }
+    .kpi-stripe { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; }
+    .kpi-stripe.gold { background: var(--gold); }
+    .kpi-stripe.green { background: var(--green); }
+    .kpi-stripe.blue { background: var(--blue); }
+    .kpi-stripe.red { background: var(--red); }
+
+    /* ── Main grid ── */
+    .main-grid { display: grid; grid-template-columns: 1fr 360px; gap: 14px; margin-bottom: 14px; }
+
+    /* ── Panels ── */
+    .panel { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--r-lg); }
+    .panel-head { padding: 1rem 1.25rem; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .panel-title { font-size: 13px; font-weight: 600; color: var(--t1); display: flex; align-items: center; gap: 7px; }
+    .panel-title i { font-size: 16px; color: var(--gold); }
+    .panel-sub { font-size: 11px; color: var(--t2); margin-top: 2px; }
+    .panel-body { padding: 1.25rem; }
+
+    /* ── Chart ── */
+    .chart-wrap { position: relative; width: 100%; height: 240px; }
+    .chart-legend { display: flex; gap: 16px; padding: 0.75rem 1.25rem; border-top: 0.5px solid var(--border); }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--t2); }
+    .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+    .tf-pills { display: flex; gap: 4px; }
+    .tf-pill { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: var(--bg3); border: 0.5px solid var(--border); color: var(--t2); cursor: pointer; transition: all 0.12s; }
+    .tf-pill.active { background: rgba(184,150,12,0.15); border-color: var(--gold); color: var(--gold); font-weight: 500; }
+
+    /* ── Signals ── */
+    .sig-list { display: flex; flex-direction: column; }
+    .sig-item { display: flex; align-items: center; gap: 10px; padding: 10px 1.25rem; border-bottom: 0.5px solid var(--border); transition: background 0.1s; }
+    .sig-item:last-child { border-bottom: none; }
+    .sig-item:hover { background: var(--bg3); }
+    .sig-badge { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; white-space: nowrap; letter-spacing: 0.03em; }
+    .sig-badge.long { background: var(--green-bg); color: var(--green); border: 0.5px solid var(--green-border); }
+    .sig-badge.short { background: var(--red-bg); color: var(--red); border: 0.5px solid var(--red-border); }
+    .sig-badge.exit { background: var(--blue-bg); color: var(--blue); border: 0.5px solid var(--blue-border); }
+    .sig-badge.skip { background: var(--bg4); color: var(--t3); border: 0.5px solid var(--border); }
+    .sig-info { flex: 1; min-width: 0; }
+    .sig-price { font-size: 13px; font-weight: 600; color: var(--t1); font-variant-numeric: tabular-nums; }
+    .sig-meta { font-size: 11px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+    .sig-right { text-align: right; flex-shrink: 0; }
+    .sig-conf { font-size: 12px; font-weight: 600; }
+    .sig-outcome { font-size: 10px; color: var(--t2); margin-top: 1px; }
+
+    /* ── Bottom grid ── */
+    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+    /* ── Macro ── */
+    .macro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 1.25rem; }
+    .macro-card { background: var(--bg3); border-radius: var(--r-sm); padding: 12px; }
+    .macro-name { font-size: 10px; color: var(--t2); margin-bottom: 4px; display: flex; align-items: center; gap: 4px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    .macro-val { font-size: 18px; font-weight: 700; color: var(--t1); font-variant-numeric: tabular-nums; }
+    .macro-chg { font-size: 10px; margin-top: 3px; display: flex; align-items: center; gap: 3px; }
+
+    .llm-reasoning { margin: 0 1.25rem 1.25rem; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: var(--r); padding: 12px; }
+    .llm-head { font-size: 10px; color: var(--t2); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+    .llm-head i { color: var(--gold); font-size: 12px; }
+    .llm-text { font-size: 12px; color: var(--t2); line-height: 1.65; }
+    .llm-conf { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; color: var(--t2); }
+    .conf-bar { flex: 1; height: 4px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+    .conf-fill { height: 100%; border-radius: 2px; background: var(--gold); }
+
+    /* ── Guards ── */
+    .guard-list { padding: 0 1.25rem; }
+    .guard-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 0.5px solid var(--border); }
+    .guard-row:last-child { border-bottom: none; }
+    .guard-left { flex: 1; }
+    .guard-name { font-size: 12px; color: var(--t1); font-weight: 500; }
+    .guard-detail { font-size: 10px; color: var(--t2); margin-top: 2px; }
+    .guard-pill { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+    .g-pass { background: var(--green-bg); color: var(--green); }
+    .g-warn { background: var(--amber-bg); color: var(--amber); }
+    .g-block { background: var(--red-bg); color: var(--red); }
+
+    /* ── Winrate ── */
+    .winrate-section { padding: 1.25rem; }
+    .wr-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .wr-label { font-size: 12px; color: var(--t2); }
+    .wr-val { font-size: 12px; font-weight: 600; color: var(--gold); }
+    .wr-bar { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+    .wr-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--green), var(--gold)); transition: width 1s ease; }
+    .outcome-row { display: flex; gap: 3px; flex-wrap: wrap; }
+    .out-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .out-dot.win { background: var(--green); }
+    .out-dot.loss { background: var(--red); }
+    .out-dot.be { background: var(--t3); }
+    .stats-mini { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .stat-mini { background: var(--bg3); border-radius: var(--r-sm); padding: 8px; text-align: center; }
+    .stat-mini-val { font-size: 15px; font-weight: 700; color: var(--t1); }
+    .stat-mini-label { font-size: 10px; color: var(--t2); margin-top: 1px; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 7px 14px; border-radius: var(--r-sm); cursor: pointer; transition: all 0.12s; font-weight: 500; text-decoration: none; border: none; font-family: inherit; }
+    .btn-primary { background: var(--gold); color: #fff; }
+    .btn-primary:hover { background: var(--gold-dim); }
+    .btn-ghost { background: var(--bg3); color: var(--t2); border: 0.5px solid var(--border2); }
+    .btn-ghost:hover { background: var(--bg4); color: var(--t1); }
+    .btn-row { display: flex; gap: 8px; padding: 1rem 1.25rem; border-top: 0.5px solid var(--border); }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+
+    /* ── Section title ── */
+    .section-title { font-size: 11px; font-weight: 600; color: var(--t3); text-transform: uppercase; letter-spacing: 0.07em; margin: 0 0 0.75rem; }
+
+    /* ── Responsive ── */
+    @media (max-width: 1100px) {
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .main-grid { grid-template-columns: 1fr; }
+      .bottom-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 760px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; }
+      .bottom-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon"><i class="ti ti-trending-up"></i></div>
+      <div>
+        <div class="logo-text">SmartGold</div>
+        <div class="logo-sub">Analyzer Pro · XAU/USD</div>
+      </div>
+    </div>
+
+    <div class="nav-section">Utama</div>
+    <a class="nav-item active" href="/ui/">
+      <i class="ti ti-layout-dashboard"></i> Dashboard
+    </a>
+    <a class="nav-item" href="/ui/signals">
+      <i class="ti ti-bolt"></i> Signal log
+      <span class="nav-badge green">4</span>
+    </a>
+    <a class="nav-item" href="/ui/positions">
+      <i class="ti ti-chart-candle"></i> Posisi aktif
+    </a>
+
+    <div class="nav-section">Analisis</div>
+    <a class="nav-item" href="/ui/backtest">
+      <i class="ti ti-player-play"></i> Backtest
+    </a>
+    <a class="nav-item" href="/ui/macro">
+      <i class="ti ti-world"></i> Konteks makro
+    </a>
+    <a class="nav-item" href="/ui/performance">
+      <i class="ti ti-chart-pie"></i> Performa
+    </a>
+
+    <div class="nav-section">Sistem</div>
+    <a class="nav-item" href="/health">
+      <i class="ti ti-heartbeat"></i> Health check
+    </a>
+    <a class="nav-item" href="/docs">
+      <i class="ti ti-book"></i> API docs
+    </a>
+    <a class="nav-item" href="/ui/settings">
+      <i class="ti ti-settings"></i> Pengaturan
+    </a>
+
+    <div class="sidebar-bottom">
+      <div class="nav-item" style="cursor:default">
+        <div class="status-dot"></div>
+        <span style="font-size:12px;color:var(--t2)">Bridge online</span>
+      </div>
+      <div style="font-size:10px;color:var(--t3);padding:0.25rem 0.75rem 0">
+        v2.1 · H1 · PSAR+EMA+Vol
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="breadcrumb">Dashboard <span>/ Overview</span></div>
+        <div class="live-badge">
+          <div class="status-dot"></div>
+          Live
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="price-ticker">
+          <div>
+            <div class="price-ticker-label">XAU/USD</div>
+            <div class="price-ticker-val" id="topbar-price">$4,688.47</div>
+          </div>
+          <div class="price-ticker-chg down" id="topbar-chg">▼ –0.57%</div>
+        </div>
+        <div class="topbar-btn" title="Refresh data" onclick="refreshData()">
+          <i class="ti ti-refresh" id="refresh-icon"></i>
+        </div>
+        <div class="topbar-btn" title="Notifikasi">
+          <i class="ti ti-bell"></i>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- KPI Row -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-label">Harga spot gold</div>
+            <div class="kpi-icon gold"><i class="ti ti-currency-dollar"></i></div>
+          </div>
+          <div class="kpi-val" id="kpi-price">$4,688</div>
+          <div class="kpi-sub down"><i class="ti ti-arrow-down-right" style="font-size:11px"></i>&nbsp;–$26.90 hari ini (–0.57%)</div>
+          <div class="kpi-stripe gold"></div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-label">Win rate (30 hari)</div>
+            <div class="kpi-icon green"><i class="ti ti-trophy"></i></div>
+          </div>
+          <div class="kpi-val up" id="kpi-wr">68.4%</div>
+          <div class="kpi-sub neutral">13 win · 4 loss · 2 breakeven</div>
+          <div class="kpi-stripe green"></div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-label">Signal hari ini</div>
+            <div class="kpi-icon blue"><i class="ti ti-bolt"></i></div>
+          </div>
+          <div class="kpi-val" id="kpi-sig">4</div>
+          <div class="kpi-sub neutral">3 execute · 1 skip · 1 slot tersisa</div>
+          <div class="kpi-stripe blue"></div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-label">Drawdown hari ini</div>
+            <div class="kpi-icon red"><i class="ti ti-shield"></i></div>
+          </div>
+          <div class="kpi-val down" id="kpi-dd">–0.8R</div>
+          <div class="kpi-sub neutral">Cap: –3.0R · Circuit breaker aman</div>
+          <div class="kpi-stripe red"></div>
+        </div>
+      </div>
+
+      <!-- Main grid: Chart + Signals -->
+      <div class="main-grid">
+
+        <!-- Price chart -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title"><i class="ti ti-chart-candle"></i>Harga XAU/USD</div>
+              <div class="panel-sub">Intraday H1 · EMA9 overlay · 20 candle terakhir</div>
+            </div>
+            <div class="tf-pills">
+              <div class="tf-pill active" onclick="setTF(this,'H1')">H1</div>
+              <div class="tf-pill" onclick="setTF(this,'H4')">H4</div>
+              <div class="tf-pill" onclick="setTF(this,'D1')">D1</div>
+            </div>
+          </div>
+          <div class="panel-body" style="padding-bottom:0">
+            <div class="chart-wrap">
+              <canvas id="priceChart" role="img" aria-label="Chart harga XAU/USD intraday range $4500-$4730">Harga XAU/USD bergerak dalam range $4500-$4730.</canvas>
+            </div>
+          </div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Bullish</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Bearish</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--gold);border-radius:50%"></div>EMA9</div>
+          </div>
+        </div>
+
+        <!-- Signal list -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title"><i class="ti ti-list-details"></i>Signal terbaru</div>
+              <div class="panel-sub">24 jam · semua jenis · real-time</div>
+            </div>
+            <a href="/ui/signals" style="font-size:11px;color:var(--gold);display:flex;align-items:center;gap:3px;text-decoration:none">Semua <i class="ti ti-arrow-right" style="font-size:13px"></i></a>
+          </div>
+
+          <div class="sig-list">
+            <div class="sig-item">
+              <span class="sig-badge long">LONG</span>
+              <div class="sig-info">
+                <div class="sig-price">$4,703.20</div>
+                <div class="sig-meta">14:00 · Vol 1.91× · PSAR ✓ · EMA aligned</div>
+              </div>
+              <div class="sig-right">
+                <div class="sig-conf up">0.84</div>
+                <div class="sig-outcome">conf</div>
+              </div>
+            </div>
+            <div class="sig-item">
+              <span class="sig-badge exit">EXIT</span>
+              <div class="sig-info">
+                <div class="sig-price">$4,721.50</div>
+                <div class="sig-meta">13:00 · PSAR flip · +1.8R</div>
+              </div>
+              <div class="sig-right">
+                <div class="sig-conf up">+1.8R</div>
+                <div class="sig-outcome">outcome</div>
+              </div>
+            </div>
+            <div class="sig-item">
+              <span class="sig-badge long">STRONG LONG</span>
+              <div class="sig-info">
+                <div class="sig-price">$4,688.40</div>
+                <div class="sig-meta">11:00 · Vol 2.01× · reclaim EMA20+50</div>
+              </div>
+              <div class="sig-right">
+                <div class="sig-conf up">0.91</div>
+                <div class="sig-outcome">conf</div>
+              </div>
+            </div>
+            <div class="sig-item">
+              <span class="sig-badge skip">SKIP</span>
+              <div class="sig-info">
+                <div class="sig-price">$4,665.00</div>
+                <div class="sig-meta">09:00 · confidence 0.41 &lt; 0.60</div>
+              </div>
+              <div class="sig-right">
+                <div class="sig-conf neutral">0.41</div>
+                <div class="sig-outcome">conf</div>
+              </div>
+            </div>
+            <div class="sig-item">
+              <span class="sig-badge short">SHORT</span>
+              <div class="sig-info">
+                <div class="sig-price">$4,642.80</div>
+                <div class="sig-meta">07:00 · DXY naik · EMA bearish</div>
+              </div>
+              <div class="sig-right">
+                <div class="sig-conf down">0.72</div>
+                <div class="sig-outcome">conf</div>
+              </div>
+            </div>
+            <div class="sig-item">
+              <span class="sig-badge exit">EXIT</span>
+              <div class="sig-info">
+                <div class="sig-price">$4,629.10</div>
+                <div class="sig-meta">05:00 · time_max 6 bars · –0.4R</div>
+              </div>
+              <div class="sig-right">
+                <div class="sig-conf down">–0.4R</div>
+                <div class="sig-outcome">outcome</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom grid: Macro + Guards + Winrate -->
+      <div class="bottom-grid">
+
+        <!-- Macro context -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title"><i class="ti ti-world"></i>Konteks makro</div>
+              <div class="panel-sub">Digunakan LLM untuk filter signal</div>
+            </div>
+            <span style="font-size:10px;color:var(--t2)" id="macro-time">Update: baru saja</span>
+          </div>
+          <div class="macro-grid">
+            <div class="macro-card">
+              <div class="macro-name"><i class="ti ti-currency-dollar" style="font-size:11px"></i>DXY</div>
+              <div class="macro-val" id="m-dxy">101.84</div>
+              <div class="macro-chg down"><i class="ti ti-arrow-down-right" style="font-size:10px"></i>&nbsp;–0.32% → bullish gold</div>
+            </div>
+            <div class="macro-card">
+              <div class="macro-name"><i class="ti ti-wave-saw-tool" style="font-size:11px"></i>US 10Y yield</div>
+              <div class="macro-val" id="m-tnx">4.48%</div>
+              <div class="macro-chg up"><i class="ti ti-arrow-up-right" style="font-size:10px"></i>&nbsp;+3.2bp → tekanan gold</div>
+            </div>
+            <div class="macro-card">
+              <div class="macro-name"><i class="ti ti-chart-bar" style="font-size:11px"></i>ATR H1</div>
+              <div class="macro-val" id="m-atr">$24.10</div>
+              <div class="macro-chg neutral">Normal · guard: OK</div>
+            </div>
+            <div class="macro-card">
+              <div class="macro-name"><i class="ti ti-alarm" style="font-size:11px"></i>News blackout</div>
+              <div class="macro-val" style="font-size:15px;color:var(--green)">Tidak aktif</div>
+              <div class="macro-chg neutral">CPI: 21 Mei · NFP: 6 Jun</div>
+            </div>
+          </div>
+          <div class="llm-reasoning">
+            <div class="llm-head"><i class="ti ti-brain"></i>LLM reasoning · signal terakhir</div>
+            <div class="llm-text">Strong long confirmed: DXY melemah mendukung rally gold, EMA ribbon fully aligned (20>50>100>200), volume 1.91× di atas rata-rata. US10Y naik tipis tapi belum cukup kuat untuk offset DXY weakness. Eksekusi dengan 1% risk, SL hybrid $8.40.</div>
+            <div class="llm-conf">
+              <span style="font-size:10px;flex-shrink:0">Confidence</span>
+              <div class="conf-bar"><div class="conf-fill" style="width:84%"></div></div>
+              <span style="font-size:11px;font-weight:600;color:var(--gold)">0.84</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Safety guards -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title"><i class="ti ti-shield-check"></i>Safety guards</div>
+              <div class="panel-sub">Berjalan sebelum eksekusi broker</div>
+            </div>
+            <span style="font-size:11px;font-weight:600;color:var(--green)">4/5 pass</span>
+          </div>
+          <div class="guard-list">
+            <div class="guard-row">
+              <div class="guard-left">
+                <div class="guard-name">Max daily trades</div>
+                <div class="guard-detail">4 dari 5 slot terpakai hari ini</div>
+              </div>
+              <span class="guard-pill g-warn">4 / 5</span>
+            </div>
+            <div class="guard-row">
+              <div class="guard-left">
+                <div class="guard-name">Drawdown guard</div>
+                <div class="guard-detail">Posisi –0.8R · cap –3.0R</div>
+              </div>
+              <span class="guard-pill g-pass">Aman</span>
+            </div>
+            <div class="guard-row">
+              <div class="guard-left">
+                <div class="guard-name">Spread guard</div>
+                <div class="guard-detail">Spread 38 pts · threshold 150 pts</div>
+              </div>
+              <span class="guard-pill g-pass">Normal</span>
+            </div>
+            <div class="guard-row">
+              <div class="guard-left">
+                <div class="guard-name">ATR guard</div>
+                <div class="guard-detail">ATR $24.10 · threshold $50</div>
+              </div>
+              <span class="guard-pill g-pass">Normal</span>
+            </div>
+            <div class="guard-row">
+              <div class="guard-left">
+                <div class="guard-name">News blackout</div>
+                <div class="guard-detail">Tidak ada event high-impact hari ini</div>
+              </div>
+              <span class="guard-pill g-pass">Clear</span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-ghost" href="/ui/settings"><i class="ti ti-settings" style="font-size:13px"></i>Atur guard</a>
+            <a class="btn btn-ghost" href="/health"><i class="ti ti-heartbeat" style="font-size:13px"></i>Health check</a>
+          </div>
+        </div>
+
+        <!-- Win rate + Performance -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title"><i class="ti ti-chart-pie"></i>Performa</div>
+              <div class="panel-sub">30 hari terakhir · 19 signal</div>
+            </div>
+          </div>
+          <div class="winrate-section">
+            <div class="wr-row">
+              <span class="wr-label">Win rate</span>
+              <span class="wr-val">68.4%</span>
+            </div>
+            <div class="wr-bar"><div class="wr-fill" id="wr-fill" style="width:0%"></div></div>
+            <div class="outcome-row" id="outcome-dots"></div>
+            <div class="stats-mini">
+              <div class="stat-mini">
+                <div class="stat-mini-val up">+2.1R</div>
+                <div class="stat-mini-label">Expectancy</div>
+              </div>
+              <div class="stat-mini">
+                <div class="stat-mini-val">1.74</div>
+                <div class="stat-mini-label">Profit factor</div>
+              </div>
+              <div class="stat-mini">
+                <div class="stat-mini-val down">–2.4R</div>
+                <div class="stat-mini-label">Max drawdown</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding: 0 1.25rem">
+            <div class="section-title">Chart kinerja (7 hari)</div>
+            <div style="position:relative;width:100%;height:90px">
+              <canvas id="perfChart" role="img" aria-label="Chart ekuitas 7 hari terakhir menunjukkan pertumbuhan dari 0R ke +4.8R">Ekuitas tumbuh dari 0R ke +4.8R dalam 7 hari.</canvas>
+            </div>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-primary" href="/ui/backtest"><i class="ti ti-player-play" style="font-size:13px"></i>Run backtest</a>
+            <a class="btn btn-ghost" href="/ui/performance"><i class="ti ti-report" style="font-size:13px"></i>Full report</a>
+          </div>
+        </div>
+
+      </div><!-- /bottom-grid -->
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+/* ── Helpers ── */
+const isDark = true; // dashboard selalu dark
+const goldHex = '#B8960C';
+const greenHex = '#1D9E75';
+const redHex = '#D85A30';
+const blueHex = '#378ADD';
+const gridColor = 'rgba(255,255,255,0.05)';
+const tickColor = 'rgba(255,255,255,0.35)';
+
+/* ── Candlestick chart (simulated) ── */
+function buildCandleData(basePrice, numBars) {
+  const labels = [];
+  const opens = [], highs = [], lows = [], closes = [];
+  const ema = [];
+  let p = basePrice - 80;
+  const k = 2 / (9 + 1);
+  for (let i = 0; i < numBars; i++) {
+    const h = new Date(Date.now() - (numBars - i) * 3600000);
+    labels.push(h.getHours().toString().padStart(2, '0') + ':00');
+    const o = p;
+    const c = o + (Math.random() - 0.46) * 30;
+    const hi = Math.max(o, c) + Math.random() * 14;
+    const lo = Math.min(o, c) - Math.random() * 14;
+    opens.push(parseFloat(o.toFixed(2)));
+    closes.push(parseFloat(c.toFixed(2)));
+    highs.push(parseFloat(hi.toFixed(2)));
+    lows.push(parseFloat(lo.toFixed(2)));
+    ema.push(parseFloat((i === 0 ? c : c * k + (ema[i - 1] || c) * (1 - k)).toFixed(2)));
+    p = c;
+  }
+  return { labels, opens, highs, lows, closes, ema };
+}
+
+let priceChart;
+function buildPriceChart(basePrice) {
+  const { labels, opens, highs, lows, closes, ema } = buildCandleData(basePrice, 20);
+  const bullColor = greenHex, bearColor = redHex;
+  const barColors = closes.map((c, i) => c >= opens[i] ? bullColor : bearColor);
+
+  if (priceChart) priceChart.destroy();
+  priceChart = new Chart(document.getElementById('priceChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Hi–Lo range',
+          data: lows.map((lo, i) => [lo, highs[i]]),
+          backgroundColor: barColors.map(c => c + '44'),
+          borderColor: barColors,
+          borderWidth: 1,
+          barPercentage: 0.3,
+          categoryPercentage: 1,
+          order: 2
+        },
+        {
+          label: 'Open–Close',
+          data: opens.map((o, i) => [Math.min(o, closes[i]), Math.max(o, closes[i])]),
+          backgroundColor: barColors,
+          borderColor: barColors,
+          borderWidth: 0,
+          barPercentage: 0.65,
+          categoryPercentage: 1,
+          order: 1
+        },
+        {
+          label: 'EMA9',
+          data: ema,
+          type: 'line',
+          borderColor: goldHex,
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.35,
+          order: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1E2026',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 0.5,
+          callbacks: {
+            label: (ctx) => {
+              const i = ctx.dataIndex;
+              if (ctx.dataset.label === 'EMA9') return `EMA9: $${ctx.parsed.y.toFixed(2)}`;
+              if (ctx.dataset.label === 'Open–Close') return `O: $${opens[i].toFixed(2)}  C: $${closes[i].toFixed(2)}`;
+              return `H: $${highs[i].toFixed(2)}  L: $${lows[i].toFixed(2)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: tickColor, font: { size: 10 }, maxRotation: 0, maxTicksLimit: 8 }, grid: { color: gridColor }, border: { display: false } },
+        y: { ticks: { color: tickColor, font: { size: 10 }, callback: v => '$' + v.toLocaleString() }, grid: { color: gridColor }, border: { display: false } }
+      }
+    }
+  });
+}
+
+buildPriceChart(4688);
+
+/* ── Performance equity chart ── */
+const perfData = [0, 0.8, 1.4, 0.9, 2.1, 2.8, 3.6, 4.8];
+const perfLabels = ['Sen','Sel','Rab','Kam','Jum','Sab','Min','Sen'];
+new Chart(document.getElementById('perfChart'), {
+  type: 'line',
+  data: {
+    labels: perfLabels,
+    datasets: [{
+      data: perfData,
+      borderColor: goldHex,
+      borderWidth: 2,
+      fill: true,
+      backgroundColor: 'rgba(184,150,12,0.08)',
+      pointRadius: 0,
+      tension: 0.4
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `+${ctx.parsed.y.toFixed(1)}R` } } },
+    scales: {
+      x: { ticks: { color: tickColor, font: { size: 10 } }, grid: { display: false }, border: { display: false } },
+      y: { ticks: { color: tickColor, font: { size: 10 }, callback: v => v + 'R' }, grid: { color: gridColor }, border: { display: false } }
+    }
+  }
+});
+
+/* ── Outcome dots ── */
+const dots = document.getElementById('outcome-dots');
+const outcomes = [...Array(13).fill('win'), ...Array(4).fill('loss'), ...Array(2).fill('be')];
+outcomes.sort(() => Math.random() - 0.5);
+outcomes.forEach(o => {
+  const d = document.createElement('div');
+  d.className = 'out-dot ' + o;
+  dots.appendChild(d);
+});
+
+/* ── Animate win rate bar ── */
+setTimeout(() => {
+  const fill = document.getElementById('wr-fill');
+  if (fill) fill.style.width = '68.4%';
+}, 400);
+
+/* ── Live price ticker ── */
+let livePrice = 4688.47;
+function updatePrice() {
+  livePrice += (Math.random() - 0.5) * 1.5;
+  const fmt = (v) => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const el1 = document.getElementById('topbar-price');
+  const el2 = document.getElementById('kpi-price');
+  if (el1) el1.textContent = fmt(livePrice);
+  if (el2) el2.textContent = '$' + Math.round(livePrice).toLocaleString();
+}
+setInterval(updatePrice, 3000);
+
+/* ── Fetch live gold price from bridge API ── */
+async function fetchLiveGoldPrice() {
+  try {
+    const res = await fetch('/api/gold-price');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.price && data.price > 3000) {
+      livePrice = parseFloat(data.price);
+      updatePrice();
+    }
+  } catch (_) { /* fallback ke simulated tick */ }
+}
+fetchLiveGoldPrice();
+setInterval(fetchLiveGoldPrice, 60000);
+
+/* ── Refresh button ── */
+function refreshData() {
+  const icon = document.getElementById('refresh-icon');
+  if (icon) { icon.style.animation = 'spin 0.6s linear'; setTimeout(() => icon.style.animation = '', 700); }
+  fetchLiveGoldPrice();
+  const el = document.getElementById('macro-time');
+  if (el) el.textContent = 'Update: baru saja';
+}
+const style = document.createElement('style');
+style.textContent = '@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }';
+document.head.appendChild(style);
+
+/* ── Timeframe pill toggle ── */
+function setTF(el, tf) {
+  document.querySelectorAll('.tf-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  buildPriceChart(livePrice);
+}
+</script>
+</body>
+</html>
