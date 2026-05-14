@@ -402,6 +402,42 @@ class CTraderMCPClient:
         if self._session_id:
             extra_headers["Mcp-Session-Id"] = self._session_id
 
+        # ── SSE-aware response parsing ──────────────────────────────────
+        def _parse_response(resp: httpx.Response) -> dict:
+            """Parse response, handling both plain JSON and SSE formats.
+
+            cTrader MCP may return:
+              - application/json: {"jsonrpc":"2.0","id":1,"result":{...}}
+              - text/event-stream: event: message\\ndata: {"jsonrpc":"2.0",...}\\n\\n
+            """
+            ct = resp.headers.get("content-type", "").lower()
+
+            if "text/event-stream" in ct or "event-stream" in ct:
+                # SSE format: "event: message\\ndata: {...}\\n\\n"
+                text = resp.text
+                # Find "data: " lines and parse JSON after them
+                for line in text.split("\n"):
+                    line = line.strip()
+                    if line.startswith("data:"):
+                        json_str = line[5:].strip()  # Remove "data:" prefix
+                        try:
+                            return json.loads(json_str)
+                        except json.JSONDecodeError:
+                            pass
+                raise CTraderMCPError(
+                    code=-4,
+                    message=f"SSE but no parseable JSON in data: {resp.text[:200]}",
+                )
+
+            # Plain JSON
+            try:
+                return resp.json()
+            except json.JSONDecodeError as exc:
+                raise CTraderMCPError(
+                    code=-4,
+                    message=f"Invalid JSON response: {resp.text[:200]}",
+                ) from exc
+
         try:
             response = await self._http.post(
                 self._endpoint, json=payload, headers=extra_headers,
@@ -423,13 +459,7 @@ class CTraderMCPClient:
                 message=f"HTTP {response.status_code}: {response.text[:500]}",
             )
 
-        try:
-            data = response.json()
-        except json.JSONDecodeError as exc:
-            raise CTraderMCPError(
-                code=-4,
-                message=f"Invalid JSON response: {response.text[:200]}",
-            ) from exc
+        data = _parse_response(response)
 
         # JSON-RPC error handling
         if "error" in data:
