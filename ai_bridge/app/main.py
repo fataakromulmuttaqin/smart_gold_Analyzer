@@ -20,6 +20,7 @@ from app.api.webhook import _signal_log
 from app.api.webhook import router as webhook_router
 from app.config.settings import get_settings
 from app.executor.factory import build_executor
+from app.monitor.heartbeat import get_monitor
 from app.utils.logging import configure_logging, logger
 
 _UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -87,10 +88,18 @@ async def lifespan(app: FastAPI):
     # Start breakeven reconciler as background task
     be_task = asyncio.create_task(_breakeven_loop(), name="breakeven_loop")
 
+    # ── Monitor: startup notification + heartbeat loop ───────────────
+    monitor = get_monitor(settings)
+    await monitor.notify_startup()
+    monitor.start_heartbeat(silence_hours=settings.monitor_silence_hours)
+
     try:
         yield
     finally:
         logger.info("SmartGold AI Bridge shutting down")
+        # Send shutdown notification before stopping
+        await monitor.notify_shutdown()
+        await monitor.stop_heartbeat()
         be_task.cancel()
         try:
             await be_task

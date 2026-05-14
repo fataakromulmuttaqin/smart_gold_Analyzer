@@ -75,6 +75,17 @@ class Settings(BaseSettings):
     min_confidence: float = Field(default=0.60, alias="MIN_CONFIDENCE")
     signal_cooldown_seconds: int = Field(default=60, alias="SIGNAL_COOLDOWN_SECONDS")
 
+    # ── Monitor ─────────────────────────────────────────────────────────
+    monitor_silence_hours: float = Field(
+        default=6.0, alias="MONITOR_SILENCE_HOURS",
+    )
+    monitor_notify_skip: bool = Field(
+        default=True, alias="MONITOR_NOTIFY_SKIP",
+    )
+    monitor_notify_execute: bool = Field(
+        default=True, alias="MONITOR_NOTIFY_EXECUTE",
+    )
+
     # ── Safety guards ────────────────────────────────────────────────────
     guard_max_daily_trades: int = Field(default=5, alias="GUARD_MAX_DAILY_TRADES")
     guard_max_daily_drawdown_r: float = Field(

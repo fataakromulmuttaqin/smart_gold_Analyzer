@@ -21,6 +21,7 @@ from app.engine.decision_engine import evaluate_signal
 from app.executor.factory import build_executor
 from app.guards.chain import Verdict, build_default_chain
 from app.models.schemas import BridgeResponse, TradingViewAlert
+from app.monitor.heartbeat import get_monitor
 from app.notifier.telegram import TelegramNotifier
 from app.risk import build_plan
 from app.storage.signal_log import SignalLog
@@ -65,6 +66,12 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
     try:
         body = await request.json()
     except Exception as exc:  # noqa: BLE001
+        # ── Monitor: JSON parse error ──────────────────────────────────
+        monitor = get_monitor()
+        await monitor.notify_error(
+            error_type="INVALID_JSON",
+            error_detail="TradingView sent a body that is not valid JSON",
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Body must be valid JSON",
@@ -74,6 +81,12 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
         alert = TradingViewAlert.model_validate(body)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Invalid webhook payload: {}", exc)
+        # ── Monitor: payload validation error ──────────────────────────
+        monitor = get_monitor()
+        await monitor.notify_error(
+            error_type="PAYLOAD_VALIDATION",
+            error_detail=f"Payload validation failed: {str(exc)[:200]}",
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Payload validation failed: {exc}",
@@ -115,10 +128,38 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
     )
 
     # ── Macro context ──────────────────────────────────────────────────
-    context = await fetch_macro_context(settings=settings)
+    try:
+        context = await fetch_macro_context(settings=settings)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Macro context fetch crashed: {}", exc)
+        monitor = get_monitor()
+        monitor.mark_signal_received()
+        await monitor.notify_error(
+            error_type="MACRO_CONTEXT_FAILED",
+            error_detail=f"Macro context fetch crashed: {str(exc)[:200]}",
+            alert=alert,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Macro context fetch failed",
+        ) from exc
 
     # ── LLM decision ───────────────────────────────────────────────────
-    decision = await evaluate_signal(alert, context, settings=settings)
+    try:
+        decision = await evaluate_signal(alert, context, settings=settings)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("LLM decision engine crashed: {}", exc)
+        monitor = get_monitor()
+        monitor.mark_signal_received()
+        await monitor.notify_error(
+            error_type="LLM_DECISION_FAILED",
+            error_detail=f"LLM decision engine error: {str(exc)[:200]}",
+            alert=alert,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="LLM decision engine failed",
+        ) from exc
 
     # ── Trade plan (entry/SL/TP/sizing — always built, even for skips) ─
     # This is what shows up in the dashboard so the user can see what the
@@ -149,12 +190,20 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
     guard_verdict, guard_results = guard_chain.run(guard_context)
 
     if guard_verdict == Verdict.BLOCK:
+        block_reason = guard_results[-1].reason if guard_results else "unknown"
         logger.info(
             "Guards BLOCKED signal {} {} — {}",
             alert.symbol,
             alert.signal,
-            guard_results[-1].reason if guard_results else "unknown",
+            block_reason,
         )
+        # ── Monitor: notify signal skipped by guard ────────────────────
+        monitor = get_monitor()
+        monitor.mark_signal_received()
+        if settings.monitor_notify_skip:
+            await monitor.notify_signal_skipped(
+                alert, decision, reason=block_reason, blocked_by_guard=True,
+            )
         return BridgeResponse(
             accepted=False,
             alert=alert,
@@ -166,9 +215,21 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
         )
 
     # ── Notify & log ───────────────────────────────────────────────────
+    monitor = get_monitor()
+    monitor.mark_signal_received()
+
     notified = False
     if decision.action in {"execute", "reduce"}:
         notified = await _notifier.send(alert, context, decision)
+
+    # ── Monitor: LLM skip notification ─────────────────────────────────
+    if decision.action == "skip":
+        if settings.monitor_notify_skip:
+            await monitor.notify_signal_skipped(
+                alert, decision,
+                reason=decision.reasoning,
+                blocked_by_guard=False,
+            )
 
     # ── Broker execution (optional) ────────────────────────────────────
     execution = await _get_executor().execute(alert, decision)
@@ -184,6 +245,21 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
         logger.warning("Executor error: {}", execution.error)
         # Notify trader about execution failure so they can intervene
         await _notifier.send_execution_error(alert, decision, execution)
+        # ── Monitor: execution error notification ──────────────────────
+        await monitor.notify_error(
+            error_type="EXECUTION_FAILED",
+            error_detail=str(execution.error),
+            alert=alert,
+        )
+
+    # ── Monitor: signal executed notification ──────────────────────────
+    if decision.action in {"execute", "reduce"} and settings.monitor_notify_execute:
+        exec_dict = execution.to_dict() if hasattr(execution, "to_dict") else None
+        await monitor.notify_signal_executed(
+            alert, decision,
+            execution_result=exec_dict,
+            plan=plan,
+        )
 
     # Log every signal (even skips) for audit
     try:
