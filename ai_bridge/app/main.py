@@ -32,7 +32,12 @@ _BREAKEVEN_INTERVAL_SECONDS = 10
 
 
 async def _breakeven_loop():
-    """Background task: periodically reconcile open positions for breakeven shift."""
+    """Background task: periodically reconcile open positions for breakeven shift.
+
+    Includes exponential backoff: if the reconciler fails repeatedly (e.g.
+    session expired, network issue), we increase the interval to avoid
+    hammering the server. Resets to normal interval on success.
+    """
     settings = get_settings()
     if not settings.sl_breakeven_enabled:
         logger.info("Breakeven loop disabled (SL_BREAKEVEN_ENABLED=false)")
@@ -54,15 +59,31 @@ async def _breakeven_loop():
         settings.sl_breakeven_buffer_atr_mult,
         _BREAKEVEN_INTERVAL_SECONDS,
     )
+
+    consecutive_failures = 0
+    max_backoff = 300  # cap at 5 minutes between retries
+
     try:
         while True:
             try:
                 shifted = await reconciler()
                 if shifted:
                     logger.info("Breakeven: shifted {} positions this cycle", shifted)
+                # Success — reset backoff
+                consecutive_failures = 0
+                await asyncio.sleep(_BREAKEVEN_INTERVAL_SECONDS)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Breakeven reconciler raised: {}", exc)
-            await asyncio.sleep(_BREAKEVEN_INTERVAL_SECONDS)
+                consecutive_failures += 1
+                # Exponential backoff: 10s, 20s, 40s, 80s, 160s, 300s (capped)
+                backoff = min(
+                    _BREAKEVEN_INTERVAL_SECONDS * (2 ** consecutive_failures),
+                    max_backoff,
+                )
+                logger.warning(
+                    "Breakeven reconciler raised (failure #{}, next retry in {}s): {}",
+                    consecutive_failures, backoff, exc,
+                )
+                await asyncio.sleep(backoff)
     except asyncio.CancelledError:
         logger.info("Breakeven loop cancelled cleanly")
         raise

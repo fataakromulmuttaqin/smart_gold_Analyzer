@@ -282,6 +282,13 @@ class CTraderExecutor:
         """Scan open positions and shift SL to breakeven if triggered.
 
         Returns number of positions modified.
+
+        Session recovery:
+          If cTrader returns a session-expired error, we reset the connection
+          state so the next call will re-initialize. We DON'T retry immediately
+          here — the caller (main.py breakeven loop) will retry on the next
+          cycle. This prevents hammering the server every 10s when the session
+          is persistently dead.
         """
         if not self.settings.sl_breakeven_enabled:
             return 0
@@ -296,7 +303,17 @@ class CTraderExecutor:
         try:
             positions = await self._client.get_positions()
         except CTraderMCPError as exc:
-            logger.warning("cTrader: failed to get positions for breakeven: {}", exc)
+            # If session expired, the client's call_tool already tried to
+            # reconnect once. If it still fails, reset our state so the
+            # NEXT cycle starts fresh instead of looping on a dead session.
+            if self._client._is_session_expired(exc):
+                logger.warning(
+                    "cTrader breakeven: session expired after reconnect attempt — "
+                    "resetting state (will retry next cycle): {}", exc,
+                )
+                self._connected = False
+            else:
+                logger.warning("cTrader: failed to get positions for breakeven: {}", exc)
             return 0
         except Exception as exc:  # noqa: BLE001
             logger.warning("cTrader: breakeven positions error: {}", exc)
@@ -379,6 +396,15 @@ class CTraderExecutor:
                     position_id, result.new_stop, result.reason,
                 )
                 modified += 1
+            except CTraderMCPError as exc:
+                if self._client._is_session_expired(exc):
+                    logger.warning(
+                        "cTrader breakeven: session died during modify — "
+                        "resetting (will retry next cycle)",
+                    )
+                    self._connected = False
+                    break
+                logger.warning("cTrader: breakeven modify failed for #{}: {}", position_id, exc)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("cTrader: breakeven modify failed for #{}: {}", position_id, exc)
 

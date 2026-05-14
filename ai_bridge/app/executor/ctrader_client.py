@@ -181,7 +181,19 @@ class CTraderMCPClient:
         if tool_name not in self._tools:
             raise CTraderMCPError(code=-1, message=f"Tool '{tool_name}' not found. Available: {list(self._tools.keys())}")
 
-        result = await self._send("tools/call", {"name": tool_name, "arguments": arguments})
+        try:
+            result = await self._send("tools/call", {"name": tool_name, "arguments": arguments})
+        except CTraderMCPError as exc:
+            # Detect session expiry and auto-reconnect (one retry)
+            if self._is_session_expired(exc):
+                logger.warning(
+                    "cTrader MCP session expired — reconnecting and retrying '{}'",
+                    tool_name,
+                )
+                await self._reconnect()
+                result = await self._send("tools/call", {"name": tool_name, "arguments": arguments})
+            else:
+                raise
 
         content = result.get("content", [])
         if not content:
@@ -194,6 +206,32 @@ class CTraderMCPClient:
                 except json.JSONDecodeError:
                     return {"text": text}
         return result
+
+    def _is_session_expired(self, exc: CTraderMCPError) -> bool:
+        """Detect if an MCP error indicates the session has expired."""
+        msg = (exc.message or "").lower()
+        # Common session expiry patterns from cTrader MCP
+        return any(phrase in msg for phrase in (
+            "session not found",
+            "session expired",
+            "session invalid",
+            "not initialized",
+            "unauthorized",
+        )) or exc.code == 401
+
+    async def _reconnect(self) -> None:
+        """Close the current session and re-initialize from scratch."""
+        logger.info("cTrader MCP: reconnecting...")
+        # Close existing HTTP client entirely (session is dead)
+        if self._http:
+            await self._http.aclose()
+            self._http = None
+        self._initialized = False
+        self._session_id = None
+        self._tools = {}
+        self._request_id = 0
+        # Re-establish connection
+        await self.connect()
 
     # ──────────────────────────────────────────────────────────────────
     # Internal transport
