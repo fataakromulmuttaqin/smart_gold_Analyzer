@@ -92,6 +92,21 @@ async def tradingview_webhook(request: Request) -> BridgeResponse:
             detail=f"Payload validation failed: {exc}",
         ) from exc
 
+    # ── Normalise symbol to broker convention ───────────────────────────
+    # TradingView sends `syminfo.ticker` which carries the feed prefix
+    # (e.g. "OANDA:XAUUSD"). For dashboard + audit + MT5 execution we
+    # prefer the broker's own symbol (e.g. "XAUUSDm" for Exness). When
+    # MT5_SYMBOL is set we override the alert.symbol so everything
+    # downstream (log, UI, order) uses the broker identifier.
+    if settings.mt5_symbol:
+        original_symbol = alert.symbol
+        if original_symbol != settings.mt5_symbol:
+            logger.info(
+                "Rewriting alert.symbol {} -> {} (MT5_SYMBOL override)",
+                original_symbol, settings.mt5_symbol,
+            )
+            alert.symbol = settings.mt5_symbol
+
     # ── Auth: shared secret ─────────────────────────────────────────────
     if not settings.webhook_secret:
         logger.error("WEBHOOK_SECRET is empty — refusing all requests")
